@@ -1,0 +1,4 @@
+2025-10-27 21:39:22,447 - app.loader - ERROR - Failed to initialize bot: Configuration errors: BOT_TOKEN is required; DEEPSEEK_API_KEY is required
+2025-10-27 21:54:51,102 - app.loader - ERROR - Failed to initialize bot: Configuration errors: BOT_TOKEN is required; DEEPSEEK_API_KEY is required
+2025-10-27 22:03:24,076 - app.loader - INFO - Bot initialized successfully
+2025-10-27 22:03:24,077 - app.loader - ERROR - Failed to initialize dependencies: 'TinkoffInvestClient' object has no attribute 'use_sandbox'
