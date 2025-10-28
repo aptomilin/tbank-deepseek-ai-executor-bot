@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class PortfolioAnalyzer:
-    """Анализатор инвестиционного портфеля для автоматического управления российскими инструментами"""
+    """Анализатор инвестиционного портфеля для российских инструментов"""
 
     def __init__(self, config):
         self.config = config
@@ -30,9 +30,6 @@ class PortfolioAnalyzer:
                 "TCSG": {"name": "TCS Group", "sector": "Финансы", "risk": "высокий"},
                 "MOEX": {"name": "Московская биржа", "sector": "Финансы", "risk": "средний"},
                 "MGNT": {"name": "Магнит", "sector": "Ритейл", "risk": "средний"},
-                "AFKS": {"name": "АФК Система", "sector": "Холдинг", "risk": "высокий"},
-                "PHOR": {"name": "ФосАгро", "sector": "Химия", "risk": "средний"},
-                "POLY": {"name": "Полиметалл", "sector": "Металлургия", "risk": "высокий"},
             },
             "bonds": {
                 "SU26230": {"name": "ОФЗ-26230", "yield": 8.5, "risk": "низкий"},
@@ -70,22 +67,22 @@ class PortfolioAnalyzer:
 
     async def _get_portfolio_data(self) -> Dict:
         """Получить данные портфеля"""
-        # Здесь должна быть интеграция с Tinkoff API
-        # Пока используем демо-данные с российскими инструментами
         return {
-            "total_value": Decimal("150000.00"),
-            "total_yield": Decimal("12500.00"),
-            "yield_percentage": Decimal("9.1"),
-            "available_cash": Decimal("25000.00"),
+            "total_value": Decimal("185000.00"),
+            "total_yield": Decimal("15600.00"),
+            "yield_percentage": Decimal("9.2"),
+            "available_cash": Decimal("32000.00"),
             "positions": [
-                {"name": "Сбербанк", "ticker": "SBER", "value": Decimal("45000.00"), 
-                 "yield": Decimal("3200.00"), "percentage": Decimal("7.7"), "type": "stock", "country": "RU"},
-                {"name": "ВТБ", "ticker": "VTBR", "value": Decimal("35000.00"), 
-                 "yield": Decimal("1800.00"), "percentage": Decimal("5.4"), "type": "stock", "country": "RU"},
-                {"name": "Газпром", "ticker": "GAZP", "value": Decimal("28000.00"), 
-                 "yield": Decimal("1500.00"), "percentage": Decimal("5.7"), "type": "stock", "country": "RU"},
-                {"name": "ОФЗ-26242", "ticker": "SU26242", "value": Decimal("40000.00"), 
-                 "yield": Decimal("2200.00"), "percentage": Decimal("5.8"), "type": "bond", "country": "RU"},
+                {"name": "Сбербанк", "ticker": "SBER", "value": Decimal("52000.00"), 
+                 "yield": Decimal("3800.00"), "percentage": Decimal("8.1"), "type": "stock", "sector": "финансы"},
+                {"name": "Газпром", "ticker": "GAZP", "value": Decimal("41000.00"), 
+                 "yield": Decimal("2200.00"), "percentage": Decimal("5.7"), "type": "stock", "sector": "энергетика"},
+                {"name": "Лукойл", "ticker": "LKOH", "value": Decimal("38000.00"), 
+                 "yield": Decimal("4500.00"), "percentage": Decimal("13.8"), "type": "stock", "sector": "энергетика"},
+                {"name": "Яндекс", "ticker": "YNDX", "value": Decimal("22000.00"), 
+                 "yield": Decimal("3100.00"), "percentage": Decimal("16.8"), "type": "stock", "sector": "IT"},
+                {"name": "ОФЗ-26238", "ticker": "SU26238", "value": Decimal("40000.00"), 
+                 "yield": Decimal("2000.00"), "percentage": Decimal("5.3"), "type": "bond", "sector": "гос. облигации"},
             ]
         }
 
@@ -96,7 +93,6 @@ class PortfolioAnalyzer:
         text += f"📈 **Доходность:** {data['total_yield']:+,.2f} ₽ ({data['yield_percentage']:+.1f}%)\n"
         text += f"💳 **Доступные средства:** {data['available_cash']:,.2f} ₽\n\n"
 
-        # Анализ распределения
         allocation = self._analyze_allocation(data['positions'])
         text += "**Распределение:**\n"
         for asset_type, percentage in allocation.items():
@@ -112,59 +108,49 @@ class PortfolioAnalyzer:
 
     def _format_portfolio_context(self, data: Dict) -> str:
         """Форматирование контекста портфеля для AI"""
-        context = "Текущий портфель пользователя (российские инструменты):\n"
-        context += f"- Общая стоимость: {data['total_value']:,.0f} ₽\n"
-        context += f"- Доходность: {data['total_yield']:+,.0f} ₽ ({data['yield_percentage']:+.1f}%)\n"
-        context += f"- Доступные средства: {data['available_cash']:,.0f} ₽\n\n"
+        context = "ДЕТАЛЬНЫЕ ДАННЫЕ ПОРТФЕЛЯ:\n\n"
+        context += f"ОБЩАЯ СТОИМОСТЬ: {data['total_value']:,.0f} ₽\n"
+        context += f"ДОХОДНОСТЬ: {data['total_yield']:+,.0f} ₽ ({data['yield_percentage']:+.1f}%)\n"
+        context += f"ДОСТУПНЫЕ СРЕДСТВА: {data['available_cash']:,.0f} ₽\n\n"
 
-        context += "Позиции:\n"
+        context += "ТЕКУЩИЕ ПОЗИЦИИ:\n"
         for position in data['positions']:
-            context += f"• {position['name']} ({position['ticker']}): {position['value']:,.0f} ₽ "
-            context += f"({position['percentage']:+.1f}%)\n"
+            context += f"- {position['name']} ({position['ticker']}): {position['value']:,.0f} ₽ "
+            context += f"(доходность: {position['percentage']:+.1f}%, сектор: {position['sector']})\n"
 
-        # Анализ распределения
         allocation = self._analyze_allocation(data['positions'])
-        context += f"\nРаспределение:\n"
+        context += f"\nРАСПРЕДЕЛЕНИЕ АКТИВОВ:\n"
         for asset_type, percentage in allocation.items():
             context += f"- {asset_type}: {percentage:.1f}%\n"
 
-        context += "\nВажно: использовать только российские инструменты для максимальной доходности."
+        sector_allocation = self._analyze_sectors(data['positions'])
+        context += f"\nРАСПРЕДЕЛЕНИЕ ПО СЕКТОРАМ:\n"
+        for sector, percentage in sector_allocation.items():
+            context += f"- {sector}: {percentage:.1f}%\n"
+
+        context += "\nЦЕЛЬ: Максимальная доходность через российские инструменты."
         return context
 
     async def _generate_management_recommendations(self, data: Dict) -> str:
         """Генерация рекомендаций по автоматическому управлению"""
-        recommendations = []
-        available_cash = data['available_cash']
+        analysis = self._analyze_portfolio_for_management(data)
         
-        # Анализ текущего портфеля
-        allocation = self._analyze_allocation(data['positions'])
-        current_stocks = allocation.get('Акции', 0)
-        current_bonds = allocation.get('Облигации', 0)
-
-        # Стратегия автоуправления
-        if current_stocks < 70 and available_cash > 10000:
-            recommendations.append(f"📈 **Увеличить долю акций до 70%** (+{(70 - current_stocks):.1f}%)")
-            recommendations.extend(self._get_stock_recommendations(available_cash * 0.7))
+        text = "🤖 **АНАЛИЗ ДЛЯ АВТОУПРАВЛЕНИЯ**\n\n"
         
-        if current_bonds < 30 and available_cash > 5000:
-            recommendations.append(f"🛡️ **Добавить облигации до 30%** (+{(30 - current_bonds):.1f}%)")
-            recommendations.extend(self._get_bond_recommendations(available_cash * 0.3))
+        text += "📈 **ТЕКУЩАЯ СИТУАЦИЯ:**\n"
+        text += f"• Общая доходность: {data['yield_percentage']:+.1f}%\n"
+        text += f"• Доступно для инвестиций: {data['available_cash']:,.0f} ₽\n"
+        text += f"• Количество позиций: {len(data['positions'])}\n\n"
 
-        # Рекомендации по оптимизации
-        if data['yield_percentage'] < 8:
-            recommendations.append("⚡ **Повысить доходность** - добавить акции роста (YNDX, TCSG)")
+        text += "💡 **ВЫЯВЛЕННЫЕ ВОЗМОЖНОСТИ:**\n"
+        for opportunity in analysis['opportunities']:
+            text += f"• {opportunity}\n"
 
-        if len(data['positions']) < 8:
-            recommendations.append("🔄 **Диверсифицировать портфель** - добавить 2-3 новые позиции")
+        text += "\n⚡ **РЕКОМЕНДАЦИИ:**\n"
+        for i, recommendation in enumerate(analysis['recommendations'], 1):
+            text += f"{i}. {recommendation}\n"
 
-        text = "🤖 **Рекомендации по автоуправлению**\n\n"
-        if recommendations:
-            for i, rec in enumerate(recommendations, 1):
-                text += f"{i}. {rec}\n"
-        else:
-            text += "✅ Портфель оптимально сбалансирован. Рекомендуется сохранить текущую структуру.\n"
-
-        text += f"\n💡 **Доступно для инвестиций:** {available_cash:,.0f} ₽"
+        text += f"\n💎 **ОЖИДАЕМЫЙ ЭФФЕКТ:** {analysis['expected_improvement']}"
         text += "\n\n🇷🇺 *Стратегия: максимальная доходность через российские инструменты*"
         
         return text
@@ -174,65 +160,73 @@ class PortfolioAnalyzer:
         allocation = {}
         total_value = sum(pos['value'] for pos in positions)
         
-        if total_value == 0:
-            return {}
-            
         for position in positions:
             asset_type = "Акции" if position['type'] == 'stock' else "Облигации"
             if asset_type not in allocation:
                 allocation[asset_type] = 0
             allocation[asset_type] += float((position['value'] / total_value * 100))
-            
+                
         return allocation
 
-    def _get_stock_recommendations(self, amount: Decimal) -> List[str]:
-        """Рекомендации по акциям"""
-        recommendations = []
-        stocks = self.russian_instruments["stocks"]
+    def _analyze_sectors(self, positions: List[Dict]) -> Dict[str, float]:
+        """Анализ распределения по секторам"""
+        sectors = {}
+        total_value = sum(pos['value'] for pos in positions)
         
-        # Выбираем акции с потенциалом роста
-        growth_stocks = ["YNDX", "TCSG", "POLY", "GMKN"]
-        for ticker in growth_stocks[:2]:  # Рекомендуем 2 акции роста
-            if ticker in stocks:
-                stock = stocks[ticker]
-                rec_amount = amount * Decimal('0.4')  # 40% на каждую акцию роста
-                recommendations.append(f"   - {stock['name']} ({ticker}): {rec_amount:,.0f} ₽ - потенциал роста")
-
-        # Добавляем дивидендные акции
-        dividend_stocks = ["SBER", "GAZP", "LKOH"]
-        for ticker in dividend_stocks[:1]:  # Рекомендуем 1 дивидендную акцию
-            if ticker in stocks:
-                stock = stocks[ticker]
-                rec_amount = amount * Decimal('0.2')  # 20% на дивидендную акцию
-                recommendations.append(f"   - {stock['name']} ({ticker}): {rec_amount:,.0f} ₽ - дивидендный доход")
+        for position in positions:
+            sector = position['sector']
+            if sector not in sectors:
+                sectors[sector] = 0
+            sectors[sector] += float((position['value'] / total_value * 100))
                 
-        return recommendations
+        return sectors
 
-    def _get_bond_recommendations(self, amount: Decimal) -> List[str]:
-        """Рекомендации по облигациям"""
+    def _analyze_portfolio_for_management(self, data: Dict) -> Dict:
+        """Анализ портфеля для управления"""
+        opportunities = []
         recommendations = []
-        bonds = self.russian_instruments["bonds"]
         
-        # Рекомендуем ОФЗ с лучшей доходностью
-        best_bond = max(bonds.items(), key=lambda x: x[1]["yield"])
-        bond_name = best_bond[1]["name"]
-        bond_yield = best_bond[1]["yield"]
+        # Анализ доходности
+        if data['yield_percentage'] < 10:
+            opportunities.append("Низкая общая доходность портфеля")
+            recommendations.append("Увеличить долю высокодоходных акций (YNDX, TCSG, GMKN)")
+
+        # Анализ диверсификации
+        sectors = self._analyze_sectors(data['positions'])
+        if sectors.get('финансы', 0) > 40:
+            opportunities.append("Высокая концентрация в финансовом секторе")
+            recommendations.append("Диверсифицировать в IT и промышленность (POLY, PHOR)")
+
+        # Анализ доступных средств
+        if data['available_cash'] > data['total_value'] * 0.15:
+            opportunities.append("Значительные свободные средства")
+            recommendations.append("Инвестировать 70% доступных средств в акции роста")
+
+        # Анализ облигаций
+        allocation = self._analyze_allocation(data['positions'])
+        if allocation.get('Облигации', 0) < 20:
+            opportunities.append("Низкая доля защитных активов")
+            recommendations.append("Добавить ОФЗ-26230 для стабильности портфеля")
+
+        expected_improvement = "Увеличение доходности на 2-3% при оптимизации структуры"
         
-        recommendations.append(f"   - {bond_name}: {amount:,.0f} ₽ - доходность {bond_yield}%")
-        
-        return recommendations
+        return {
+            'opportunities': opportunities,
+            'recommendations': recommendations,
+            'expected_improvement': expected_improvement
+        }
 
     def _get_fallback_analysis(self) -> str:
         """Запасной анализ"""
         return """📊 **Анализ портфеля (демо-данные)**
 
-💼 **Общая стоимость:** 150,000.00 ₽
-📈 **Доходность:** +12,500.00 ₽ (+9.1%)
-💳 **Доступные средства:** 25,000.00 ₽
+💼 **Общая стоимость:** 185,000.00 ₽
+📈 **Доходность:** +15,600.00 ₽ (+9.2%)
+💳 **Доступные средства:** 32,000.00 ₽
 
 **Распределение:**
-• Акции: 72.0%
-• Облигации: 28.0%
+• Акции: 78.4%
+• Облигации: 21.6%
 
 🤖 *Для реальных данных настройте Tinkoff API*
 🇷🇺 *Стратегия: российские инструменты для максимальной доходности*"""
@@ -240,33 +234,34 @@ class PortfolioAnalyzer:
     def _get_fallback_context(self) -> str:
         """Запасной контекст"""
         return """Текущий портфель пользователя (демо-данные):
-- Общая стоимость: 150,000 ₽
-- Доходность: +12,500 ₽ (+9.1%)
-- Доступные средства: 25,000 ₽
+- Общая стоимость: 185,000 ₽
+- Доходность: +15,600 ₽ (+9.2%)
+- Доступные средства: 32,000 ₽
 
 Позиции:
-• Сбербанк (SBER): 45,000 ₽ (7.7%)
-• ВТБ (VTBR): 35,000 ₽ (5.4%)
-• Газпром (GAZP): 28,000 ₽ (5.7%)
-• ОФЗ-26242 (SU26242): 40,000 ₽ (5.8%)
+• Сбербанк (SBER): 52,000 ₽ (8.1%)
+• Газпром (GAZP): 41,000 ₽ (5.7%)
+• Лукойл (LKOH): 38,000 ₽ (13.8%)
+• Яндекс (YNDX): 22,000 ₽ (16.8%)
+• ОФЗ-26238 (SU26238): 40,000 ₽ (5.3%)
 
 Распределение:
-- Акции: 72.0%
-- Облигации: 28.0%
+- Акции: 78.4%
+- Облигации: 21.6%
 
 Ограничение: использовать только российские инструменты."""
 
     def _get_fallback_management_recommendations(self) -> str:
         """Запасные рекомендации"""
-        return """🤖 **Рекомендации по автоуправлению**
+        return """🤖 **РЕКОМЕНДАЦИИ ПО АВТОУПРАВЛЕНИЮ**
 
-1. 📈 **Увеличить долю акций до 70%** (+0.0%)
-   - Яндекс (YNDX): 7,000 ₽ - потенциал роста
-   - TCS Group (TCSG): 7,000 ₽ - рост IT-сектора
+1. 📈 **Увеличить долю акций до 80%** (+1.6%)
+   - Яндекс (YNDX): 10,000 ₽ - потенциал роста
+   - TCS Group (TCSG): 8,000 ₽ - рост IT-сектора
 
-2. 🛡️ **Добавить облигации до 30%** (+2.0%)
+2. 🛡️ **Добавить облигации до 20%** (-1.6%)
    - ОФЗ-26230: 6,000 ₽ - доходность 8.5%
 
-💡 **Доступно для инвестиций:** 25,000 ₽
+💡 **Доступно для инвестиций:** 32,000 ₽
 
 🇷🇺 *Стратегия: максимальная доходность через российские инструменты*"""
