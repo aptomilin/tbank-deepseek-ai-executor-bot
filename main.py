@@ -1,52 +1,75 @@
+#!/usr/bin/env python3
 """
-Main application entry point
+Главный модуль Investment Advisor Application
+Интеграция Tinkoff Invest API с Telegram ботом и AI-аналитикой
 """
+
 import logging
-import sys
-from dotenv import load_dotenv
-from app.loader import initialize_app
-from app.telegram_bot import InvestmentTelegramBot
+import os
+from app.loader import load_config
+from app.bot.investment_bot import InvestmentTelegramBot
 
-# Load environment first
-load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('app.log')
-    ]
-)
+def setup_logging():
+    """Настройка логирования"""
+    # Создаем папку для логов
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-logger = logging.getLogger(__name__)
+    # Настраиваем корневой логгер
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Форматтер
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+    )
+
+    # Обработчик для консоли
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    # Обработчик для файла
+    file_handler = logging.FileHandler(
+        filename=os.path.join(log_dir, 'app.log'),
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    # Добавляем обработчики к корневому логгеру
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
 
 def main():
-    """Main application function"""
+    """Основная функция приложения"""
+    # Настройка логирования
+    setup_logging()
+
+    logger = logging.getLogger(__name__)
+    logger.info("🚀 Starting Investment Advisor Application...")
+
     try:
-        print("🚀 Starting Investment Advisor Application...")
-        
-        # Initialize Tinkoff API dependencies
-        logger.info("Initializing dependencies...")
-        if not initialize_app():
-            logger.error("❌ Failed to initialize dependencies")
-            return 1
-        
-        logger.info("✅ Dependencies initialized successfully")
-        
-        # Start Telegram bot
-        bot = InvestmentTelegramBot()
+        # Загрузка конфигурации
+        config = load_config()
+        logger.info("✅ Configuration loaded")
+
+        # Создание бота
+        bot = InvestmentTelegramBot(config)
+
+        logger.info("✅ Bot initialized")
+        logger.info("🤖 Starting Telegram bot...")
+
+        # Запуск бота
         bot.run()
-        
-        return 0
-        
-    except KeyboardInterrupt:
-        print("\n🛑 Application stopped by user")
-        return 0
+
     except Exception as e:
-        logger.error(f"❌ Application error: {e}")
-        return 1
+        logger.error(f"❌ Application error: {e}", exc_info=True)
+        raise
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
