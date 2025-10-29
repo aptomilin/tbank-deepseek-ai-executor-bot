@@ -4,7 +4,9 @@ import logging
 import re
 import asyncio
 from typing import Dict, Any, Optional
-from config.deepseek import deepseek_config
+
+# Используем настройки из app.settings вместо config.deepseek
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +14,9 @@ class DeepSeekClient:
     """Клиент для работы с DeepSeek API"""
     
     def __init__(self):
-        self.api_key = deepseek_config.API_KEY
-        self.base_url = deepseek_config.BASE_URL
-        self.timeout = aiohttp.ClientTimeout(total=deepseek_config.TIMEOUT)
+        self.api_key = settings.DEEPSEEK_API_KEY
+        self.base_url = settings.DEEPSEEK_API_URL
+        self.timeout = aiohttp.ClientTimeout(total=30)
         
     async def analyze_investment_portfolio(self, portfolio_data: Dict, market_data: Dict) -> Dict[str, Any]:
         """
@@ -59,7 +61,7 @@ class DeepSeekClient:
     
     def _validate_api_key(self) -> bool:
         """Validate API key"""
-        return deepseek_config.is_configured()
+        return bool(self.api_key and self.api_key != "your_deepseek_api_key_here")
     
     def _build_portfolio_analysis_prompt(self, portfolio_data: Dict, market_data: Dict) -> str:
         """Построение промпта для анализа портфеля"""
@@ -138,16 +140,16 @@ class DeepSeekClient:
         }
         
         payload = {
-            "model": deepseek_config.MODEL,
+            "model": "deepseek-chat",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": deepseek_config.TEMPERATURE,
-            "max_tokens": deepseek_config.MAX_TOKENS,
+            "temperature": 0.3,
+            "max_tokens": 4000,
             "stream": False
         }
         
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(self.base_url, headers=headers, json=payload) as response:
+                async with session.post(f"{self.base_url}/chat/completions", headers=headers, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
                         return self._parse_response(result)

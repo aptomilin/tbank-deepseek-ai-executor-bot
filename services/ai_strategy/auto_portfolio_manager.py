@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from datetime import datetime
 import re
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -23,40 +22,48 @@ class AutoPortfolioManager:
         """Загрузка списка российских инструментов"""
         return {
             "stocks": {
-                "SBER": {"name": "Сбербанк", "sector": "Финансы", "risk": "средний"},
-                "VTBR": {"name": "ВТБ", "sector": "Финансы", "risk": "средний"},
-                "GAZP": {"name": "Газпром", "sector": "Энергетика", "risk": "низкий"},
-                "LKOH": {"name": "Лукойл", "sector": "Энергетика", "risk": "низкий"},
-                "ROSN": {"name": "Роснефть", "sector": "Энергетика", "risk": "средний"},
-                "YNDX": {"name": "Яндекс", "sector": "IT", "risk": "высокий"},
-                "TCSG": {"name": "TCS Group", "sector": "Финансы", "risk": "высокий"},
-                "GMKN": {"name": "ГМК Норникель", "sector": "Металлургия", "risk": "высокий"},
-                "POLY": {"name": "Полиметалл", "sector": "Металлургия", "risk": "высокий"},
-                "MOEX": {"name": "Московская биржа", "sector": "Финансы", "risk": "средний"},
+                "SBER": {"name": "Сбербанк", "sector": "Финансы"},
+                "VTBR": {"name": "ВТБ", "sector": "Финансы"},
+                "GAZP": {"name": "Газпром", "sector": "Энергетика"},
+                "LKOH": {"name": "Лукойл", "sector": "Энергетика"},
+                "ROSN": {"name": "Роснефть", "sector": "Энергетика"},
+                "YNDX": {"name": "Яндекс", "sector": "IT"},
+                "TCSG": {"name": "TCS Group", "sector": "Финансы"},
+                "GMKN": {"name": "ГМК Норникель", "sector": "Металлургия"},
+                "POLY": {"name": "Полиметалл", "sector": "Металлургия"},
+                "MOEX": {"name": "Московская биржа", "sector": "Финансы"},
+                "AFKS": {"name": "АФК Система", "sector": "Холдинги"},
+                "MTSS": {"name": "МТС", "sector": "Телеком"},
+                "MGNT": {"name": "Магнит", "sector": "Ритейл"},
+                "RTKM": {"name": "Ростелеком", "sector": "Телеком"},
+                "HYDR": {"name": "РусГидро", "sector": "Энергетика"},
+                "FEES": {"name": "ФСК ЕЭС", "sector": "Энергетика"},
+                "TRNFP": {"name": "Транснефть", "sector": "Энергетика"},
             },
             "bonds": {
-                "SU26230": {"name": "ОФЗ-26230", "yield": 8.5, "risk": "низкий"},
-                "SU26238": {"name": "ОФЗ-26238", "yield": 8.2, "risk": "низкий"},
-                "SU26242": {"name": "ОФЗ-26242", "yield": 8.0, "risk": "низкий"},
+                "SU26230": {"name": "ОФЗ-26230", "type": "гос. облигации"},
+                "SU26238": {"name": "ОФЗ-26238", "type": "гос. облигации"},
+                "SU26242": {"name": "ОФЗ-26242", "type": "гос. облигации"},
+                "RU000A105UY6": {"name": "ОФЗ-29021", "type": "гос. облигации"},
+                "RU000A106UY5": {"name": "ОФЗ-29022", "type": "гос. облигации"},
             }
         }
         
     async def generate_trading_decisions(self, portfolio_data: Dict, market_context: str = "") -> List[Dict]:
         """Генерация торговых решений через AI"""
         try:
-            # Пробуем получить решения от AI
+            # Получаем решения от AI
             ai_decisions = await self._get_ai_trading_decisions(portfolio_data, market_context)
             if ai_decisions:
                 logger.info(f"AI generated {len(ai_decisions)} trading decisions")
                 return ai_decisions
             else:
-                # Fallback: генерируем решения на основе алгоритмической логики
-                logger.info("Using algorithmic fallback for trading decisions")
-                return await self._generate_algorithmic_decisions(portfolio_data)
+                logger.warning("AI не смог сгенерировать торговые решения")
+                return []
             
         except Exception as e:
             logger.error(f"Error generating trading decisions: {e}")
-            return await self._generate_algorithmic_decisions(portfolio_data)
+            return []
     
     async def _get_ai_trading_decisions(self, portfolio_data: Dict, market_context: str) -> List[Dict]:
         """Получение торговых решений от AI"""
@@ -75,71 +82,6 @@ class AutoPortfolioManager:
             logger.error(f"Error in AI trading decisions: {e}")
             return []
     
-    async def _generate_algorithmic_decisions(self, portfolio_data: Dict) -> List[Dict]:
-        """Алгоритмическая генерация торговых решений (fallback)"""
-        decisions = []
-        available_cash = portfolio_data['available_cash']
-        positions = portfolio_data['positions']
-        
-        # Анализируем текущий портфель
-        allocation = self._calculate_allocation(positions)
-        sectors = self._analyze_sectors(positions)
-        
-        # Правило 1: Если есть доступные средства, инвестируем в недооцененные сектора
-        if available_cash > Decimal('10000'):
-            if sectors.get('IT', 0) < 15:
-                # Добавляем IT-сектор
-                amount = min(available_cash * Decimal('0.3'), Decimal('15000'))
-                decisions.append({
-                    'action': 'BUY',
-                    'ticker': 'YNDX',
-                    'amount': amount,
-                    'rationale': 'Увеличение доли IT-сектора для роста доходности',
-                    'expected_yield': 18.5,
-                    'source': 'algorithm'
-                })
-            
-            if sectors.get('Металлургия', 0) < 10:
-                # Добавляем металлургию
-                amount = min(available_cash * Decimal('0.2'), Decimal('10000'))
-                decisions.append({
-                    'action': 'BUY',
-                    'ticker': 'GMKN',
-                    'amount': amount,
-                    'rationale': 'Диверсификация в экспортно-ориентированные активы',
-                    'expected_yield': 16.0,
-                    'source': 'algorithm'
-                })
-        
-        # Правило 2: Ребалансировка переоцененных позиций
-        for position in positions:
-            if position['percentage'] < 5 and position['type'] == 'stock':
-                # Увеличиваем слабые позиции
-                if available_cash > Decimal('5000'):
-                    amount = min(available_cash * Decimal('0.15'), Decimal('8000'))
-                    decisions.append({
-                        'action': 'BUY',
-                        'ticker': position['ticker'],
-                        'amount': amount,
-                        'rationale': f'Усиление позиции {position["name"]}',
-                        'expected_yield': position['percentage'] + 3.0,
-                        'source': 'algorithm'
-                    })
-        
-        # Правило 3: Добавление облигаций для баланса
-        if allocation.get('Облигации', 0) < 20 and available_cash > Decimal('5000'):
-            amount = min(available_cash * Decimal('0.25'), Decimal('12000'))
-            decisions.append({
-                'action': 'BUY',
-                'ticker': 'SU26230',
-                'amount': amount,
-                'rationale': 'Балансировка портфеля защитными активами',
-                'expected_yield': 8.5,
-                'source': 'algorithm'
-            })
-        
-        return decisions[:4]  # Ограничиваем 4 решениями
-    
     def _create_analysis_prompt(self, portfolio_data: Dict, market_context: str) -> str:
         """Создает промпт для анализа и принятия решений"""
         
@@ -148,22 +90,44 @@ class AutoPortfolioManager:
 ДАННЫЕ ПОРТФЕЛЯ:
 {self._format_portfolio_for_ai(portfolio_data)}
 
+ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
+{self._format_available_instruments()}
+
 РЫНОЧНЫЙ КОНТЕКСТ:
 {market_context if market_context else "Российский рынок акций и облигаций"}
 
-ЗАДАЧА: Сгенерируй 3-5 конкретных торговых решений для максимизации доходности.
+ЗАДАЧА: Проанализируй текущий портфель и сгенерируй 3-5 конкретных торговых решений для оптимизации и максимизации доходности.
 
-ФОРМАТ ОТВЕТА (обязательно):
-BUY/SELL [ТИКЕР] [СУММА_В_РУБЛЯХ] [ОБОСНОВАНИЕ] [ОЖИДАЕМАЯ_ДОХОДНОСТЬ%]
+КРИТЕРИИ АНАЛИЗА:
+1. Диверсификация по секторам
+2. Баланс между риском и доходностью  
+3. Текущая доходность позиций
+4. Доступные средства для инвестиций
+5. Рыночные тенденции
+
+ФОРМАТ ОТВЕТА (строго соблюдай):
+BUY/SELL [ТИКЕР] [СУММА_В_РУБЛЯХ] [КРАТКОЕ_ОБОСНОВАНИЕ] [ОЖИДАЕМАЯ_ДОХОДНОСТЬ%]
 
 ПРИМЕРЫ:
-BUY YNDX 15000 РОСТ_IT_СЕКТОРА 18.5
-SELL GAZP 8000 СТАГНАЦИЯ_ЭНЕРГЕТИКИ 5.2
-BUY SU26230 12000 ЗАЩИТА_ПОРТФЕЛЯ 8.5
+BUY YNDX 15000 РОСТ_IT_СЕКТОРА_И_ВЫСОКАЯ_ДОХОДНОСТЬ 18.5
+SELL GAZP 8000 СТАГНАЦИЯ_ЭНЕРГЕТИКИ_И_НИЗКАЯ_ДОХОДНОСТЬ 5.2
+BUY SU26230 12000 ДИВЕРСИФИКАЦИЯ_И_ЗАЩИТА_КАПИТАЛА 8.5
 
 РЕШЕНИЯ:"""
         
         return prompt
+    
+    def _format_available_instruments(self) -> str:
+        """Форматирует список доступных инструментов"""
+        text = "АКЦИИ:\n"
+        for ticker, info in self.russian_instruments["stocks"].items():
+            text += f"- {ticker}: {info['name']} ({info['sector']})\n"
+        
+        text += "\nОБЛИГАЦИИ:\n"
+        for ticker, info in self.russian_instruments["bonds"].items():
+            text += f"- {ticker}: {info['name']}\n"
+            
+        return text
     
     async def _get_ai_trading_advice(self, prompt: str) -> str:
         """Получает торговые рекомендации от DeepSeek AI"""
@@ -181,10 +145,22 @@ BUY SU26230 12000 ЗАЩИТА_ПОРТФЕЛЯ 8.5
             "messages": [
                 {
                     "role": "system", 
-                    "content": """Ты - автоматический торговый алгоритм. Дай конкретные торговые решения в строгом формате: 
-ACTION TICKER AMOUNT RATIONALE YIELD%
-Где ACTION: BUY/SELL, AMOUNT: сумма в рублях, YIELD: ожидаемая доходность в %.
-Только российские инструменты. Максимум 5 решений."""
+                    "content": """Ты - профессиональный алгоритмический торговый робот для российского рынка. 
+
+ТВОЯ ЗАДАЧА: Анализировать данные портфеля и генерировать КОНКРЕТНЫЕ торговые решения.
+
+ПРАВИЛА:
+1. Используй ТОЛЬКО российские инструменты из предоставленного списка
+2. Генерируй 3-5 решений максимум
+3. Суммы должны быть реалистичными относительно доступных средств
+4. Учитывай диверсификацию и риск-профиль
+5. Обоснование должно быть кратким и конкретным
+6. Указывай реалистичную ожидаемую доходность
+
+ФОРМАТ СТРОГО:
+ACTION TICKER AMOUNT RATIONALE EXPECTED_YIELD%
+
+Не добавляй никаких пояснений, только список решений."""
                 },
                 {
                     "role": "user",
@@ -218,19 +194,24 @@ ACTION TICKER AMOUNT RATIONALE YIELD%
     
     def _format_portfolio_for_ai(self, portfolio: Dict) -> str:
         """Форматирует данные портфеля для AI"""
-        text = f"Общая стоимость: {portfolio['total_value']:,.0f} ₽\n"
-        text += f"Доходность: {portfolio['total_yield']:+,.0f} ₽ ({portfolio['yield_percentage']:+.1f}%)\n"
-        text += f"Доступные средства: {portfolio['available_cash']:,.0f} ₽\n\n"
+        text = f"💰 Общая стоимость: {portfolio['total_value']:,.0f} ₽\n"
+        text += f"📈 Общая доходность: {portfolio['total_yield']:+,.0f} ₽ ({portfolio['yield_percentage']:+.1f}%)\n"
+        text += f"💳 Доступные средства: {portfolio['available_cash']:,.0f} ₽\n\n"
         
-        text += "Текущие позиции:\n"
+        text += "📊 Текущие позиции:\n"
         for position in portfolio['positions']:
             text += f"- {position['name']} ({position['ticker']}): {position['value']:,.0f} ₽ "
             text += f"(доходность: {position['percentage']:+.1f}%)\n"
         
         allocation = self._calculate_allocation(portfolio['positions'])
-        text += f"\nРаспределение:\n"
+        text += f"\n🎯 Распределение:\n"
         for asset_type, percentage in allocation.items():
             text += f"- {asset_type}: {percentage:.1f}%\n"
+            
+        sectors = self._analyze_sectors(portfolio['positions'])
+        text += f"\n🏢 Секторальное распределение:\n"
+        for sector, percentage in sectors.items():
+            text += f"- {sector}: {percentage:.1f}%\n"
             
         return text
     
@@ -241,7 +222,7 @@ ACTION TICKER AMOUNT RATIONALE YIELD%
         
         for line in lines:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith('#') or 'ПРИМЕР' in line.upper():
                 continue
                 
             # Пробуем разные форматы парсинга
@@ -270,7 +251,7 @@ ACTION TICKER AMOUNT RATIONALE YIELD%
                 return None
             
             # Ищем тикер (второй элемент или следующий после действия)
-            ticker = parts[1] if len(parts[1]) <= 6 else None
+            ticker = parts[1] if len(parts[1]) <= 10 else None
             if not ticker or ticker not in self._get_all_tickers():
                 # Пробуем найти тикер в строке
                 for part in parts[2:6]:
@@ -283,18 +264,27 @@ ACTION TICKER AMOUNT RATIONALE YIELD%
             
             # Ищем сумму
             amount = self._extract_amount(line, portfolio_data['available_cash'])
+            if amount <= 0:
+                return None
             
             # Ищем доходность
             expected_yield = self._extract_yield(line)
             
             # Обоснование - остальная часть строки
-            rationale_parts = []
-            for part in parts:
-                if (part != action and part != ticker and 
-                    not part.replace('₽', '').replace(',', '').replace('.', '').isdigit()):
-                    rationale_parts.append(part)
+            rationale_start = 2
+            for i, part in enumerate(parts[2:], 2):
+                if part.replace('₽', '').replace(',', '').replace('.', '').isdigit():
+                    rationale_start = i + 1
+                    break
             
-            rationale = ' '.join(rationale_parts) if rationale_parts else 'AI рекомендация'
+            rationale_parts = parts[rationale_start:]
+            rationale = ' '.join(rationale_parts)
+            
+            # Убираем процент доходности из обоснования
+            rationale = re.sub(r'\d+\.?\d*%', '', rationale).strip()
+            
+            if not rationale:
+                rationale = "Оптимизация портфеля"
             
             return {
                 'action': action,
@@ -321,29 +311,30 @@ ACTION TICKER AMOUNT RATIONALE YIELD%
         try:
             # Ищем числа с символами валюты
             matches = re.findall(r'(\d+[,\.]?\d*)\s*₽?', text)
-            if matches:
-                amount_str = matches[0].replace(',', '').replace('.', '')
+            for match in matches:
+                amount_str = match.replace(',', '').replace('.', '')
                 amount = Decimal(amount_str)
-                # Проверяем что сумма разумная
-                if amount < available_cash * Decimal('0.8'):
+                # Проверяем что сумма разумная (не больше 80% доступных средств)
+                if amount > 0 and amount <= available_cash * Decimal('0.8'):
                     return amount
         except:
             pass
         
-        # Fallback: 20% от доступных средств
-        return available_cash * Decimal('0.2')
+        return Decimal('0')
     
     def _extract_yield(self, text: str) -> float:
         """Извлекает ожидаемую доходность из текста"""
         try:
             matches = re.findall(r'(\d+[,\.]?\d*)%', text)
             if matches:
-                return float(matches[0].replace(',', '.'))
+                yield_value = float(matches[0].replace(',', '.'))
+                # Проверяем разумные пределы
+                if -50 <= yield_value <= 100:
+                    return yield_value
         except:
             pass
         
-        # Fallback: случайная доходность в разумных пределах
-        return round(random.uniform(8.0, 25.0), 1)
+        return 0.0
     
     def _calculate_allocation(self, positions: List[Dict]) -> Dict[str, float]:
         """Рассчитывает распределение активов"""

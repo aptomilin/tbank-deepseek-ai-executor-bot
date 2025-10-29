@@ -6,9 +6,11 @@
 
 import logging
 import os
-from app.loader import load_config
-from app.bot.investment_bot import InvestmentTelegramBot
+import sys
 
+# Добавляем текущую директорию в путь
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
 
 def setup_logging():
     """Настройка логирования"""
@@ -19,11 +21,11 @@ def setup_logging():
 
     # Настраиваем корневой логгер
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     # Форматтер
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
     # Обработчик для консоли
@@ -53,21 +55,27 @@ def main():
     logger.info("🚀 Starting Investment Advisor Application...")
 
     try:
-        # Загрузка конфигурации
-        config = load_config()
-        logger.info("✅ Configuration loaded")
+        # Импортируем после настройки логирования
+        from app.telegram_bot import InvestmentTelegramBot
+        
+        logger.info("✅ Modules imported successfully")
 
-        # Создание бота
-        bot = InvestmentTelegramBot(config)
-
+        # Создание и запуск бота
+        bot = InvestmentTelegramBot()
         logger.info("✅ Bot initialized")
         logger.info("🤖 Starting Telegram bot...")
 
         # Запуск бота
         bot.run()
 
+    except ImportError as e:
+        logger.error(f"❌ Import error: {e}")
+        print(f"❌ Import error: {e}")
+        print("💡 Check that all required packages are installed:")
+        print("   pip install python-telegram-bot tinkoff-investments python-dotenv aiohttp")
     except Exception as e:
         logger.error(f"❌ Application error: {e}", exc_info=True)
+        print(f"❌ Application error: {e}")
         raise
 
 

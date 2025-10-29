@@ -1,72 +1,81 @@
+"""
+Tinkoff client loader - ONLY REAL and SANDBOX modes
+"""
 import logging
-import os
-from typing import Optional
-
-from tinkoff.invest import AsyncClient
-
-# Используем существующую структуру конфигурации из проекта
 from app.settings import settings
 
-# Создаем логгер для этого модуля
 logger = logging.getLogger(__name__)
 
+class TinkoffClientManager:
+    """Manager for Tinkoff client with ONLY real and sandbox modes"""
+    
+    def __init__(self):
+        self._initialized = False
+        self._initialize_client()
 
-def load_config():
-    """Загрузка конфигурации приложения"""
-    return settings
-
-
-async def initialize_tinkoff_client(config) -> AsyncClient:
-    """Инициализация клиента Tinkoff Invest API"""
-    try:
-        client = AsyncClient(
-            token=config.TINKOFF_TOKEN if config.TINKOFF_TOKEN else "sandbox_token",
-            app_name=config.TINKOFF_APP_NAME
-        )
-        
-        if config.TINKOFF_SANDBOX_MODE:
-            logger.info("🔧 Initializing sandbox mode...")
+    def _initialize_client(self):
+        """Initialize Tinkoff client"""
+        try:
+            token = settings.get_tinkoff_token()
             
-            try:
-                # Пытаемся создать новый счет с обработкой ошибок
-                open_account_response = await client.sandbox.open_sandbox_account()
-                account_id = open_account_response.account_id
-                logger.info(f"✅ Created new sandbox account: {account_id}")
+            from tinkoff.invest import Client
+            
+            mode = "SANDBOX" if settings.TINKOFF_SANDBOX_MODE else "REAL"
+            logger.info(f"🔧 Testing Tinkoff {mode} API connection...")
+            
+            with Client(token=token, app_name=settings.TINKOFF_APP_NAME) as client:
+                accounts = client.users.get_accounts()
+                logger.info(f"✅ Tinkoff {mode} connected: {len(accounts.accounts)} accounts")
                 
-                # Пополняем счет после создания
-                await setup_sandbox_account(client, account_id)
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Cannot create sandbox account: {e}")
-                # Используем фиктивный account_id для продолжения работы
-                account_id = "sandbox_account_id"
-                logger.info(f"✅ Using fallback sandbox account: {account_id}")
+                if settings.TINKOFF_SANDBOX_MODE and not accounts.accounts:
+                    logger.info("🔄 Creating sandbox account...")
+                    sandbox_account = client.sandbox.open_sandbox_account()
+                    logger.info(f"✅ Sandbox account created: {sandbox_account.account_id}")
+                elif not accounts.accounts:
+                    logger.warning("⚠️ No investment accounts found in real mode")
+            
+            self._initialized = True
+            
+        except Exception as e:
+            logger.error(f"❌ Tinkoff client initialization error: {e}")
+            raise
+
+    def get_client(self):
+        """Get a new client instance for each operation"""
+        if not self._initialized:
+            raise ValueError("Tinkoff client not properly initialized")
         
-        return client
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize Tinkoff client: {e}")
-        raise
+        token = settings.get_tinkoff_token()
+        from tinkoff.invest import Client
+        return Client(token=token, app_name=settings.TINKOFF_APP_NAME)
+    
+    def is_real_client(self):
+        """Check if using real Tinkoff client (always True)"""
+        return True
+    
+    def execute_operation(self, operation):
+        """Execute operation with proper client management"""
+        # Create new client for each operation
+        try:
+            with self.get_client() as client:
+                return operation(client)
+        except Exception as e:
+            logger.error(f"Tinkoff operation failed: {e}")
+            raise
 
+# Global client manager instance
+_client_manager = None
 
-async def setup_sandbox_account(client: AsyncClient, account_id: str) -> str:
-    """Настройка песочного счета (пополнение баланса)"""
-    try:
-        # Пополняем песочный счет
-        from tinkoff.invest import MoneyValue, Currency
-        await client.sandbox.sandbox_pay_in(
-            account_id=account_id,
-            amount=MoneyValue(units=1000000, nano=0, currency=Currency.RUB)
-        )
-        logger.info("💰 Sandbox account funded with 1,000,000 RUB")
-        return account_id
-        
-    except Exception as e:
-        logger.warning(f"⚠️ Could not fund sandbox account: {e}")
-        return account_id
+def get_tinkoff_client():
+    """Get Tinkoff client via manager"""
+    global _client_manager
+    if _client_manager is None:
+        _client_manager = TinkoffClientManager()
+    return _client_manager.get_client()
 
-
-async def close_tinkoff_client(client: AsyncClient):
-    """Закрытие клиента Tinkoff Invest API"""
-    await client.close()
-    logger.info("✅ Tinkoff client closed")
+def get_tinkoff_client_manager():
+    """Get Tinkoff client manager"""
+    global _client_manager
+    if _client_manager is None:
+        _client_manager = TinkoffClientManager()
+    return _client_manager
