@@ -1,5 +1,5 @@
 """
-Application settings with AI portfolio management
+Application settings with simplified REAL/SANDBOX modes
 """
 import os
 import logging
@@ -8,7 +8,7 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 class Settings:
-    """Application settings with AI portfolio management"""
+    """Application settings with simplified modes"""
     
     def __init__(self):
         self._load_env_file()
@@ -36,7 +36,7 @@ class Settings:
             raise ValueError("TELEGRAM_BOT_TOKEN is required!")
 
     def _setup_tinkoff(self):
-        """Setup Tinkoff Invest API settings"""
+        """Setup Tinkoff Invest API settings - ONLY REAL and SANDBOX"""
         # Real trading token
         self.TINKOFF_TOKEN: str = os.getenv("TINKOFF_TOKEN", "")
         
@@ -75,21 +75,20 @@ class Settings:
         trading_mode = os.getenv("TRADING_MODE", "manual").lower()
         self.AUTO_TRADING_MODE = trading_mode in ["auto", "automatic", "true", "1"]
         
-        # Broker commission settings (fallback if automatic detection fails)
-        self.BROKER_COMMISSION_BUY = float(os.getenv("BROKER_COMMISSION_BUY", "0.05"))  # 0.05%
-        self.BROKER_COMMISSION_SELL = float(os.getenv("BROKER_COMMISSION_SELL", "0.05"))  # 0.05%
-        self.BROKER_MIN_COMMISSION = float(os.getenv("BROKER_MIN_COMMISSION", "1.0"))  # 1 руб.
-        
         if self.AUTO_TRADING_MODE:
             logger.info("🤖 Режим торговли: ПОЛНОСТЬЮ АВТОМАТИЧЕСКИЙ")
         else:
             logger.info("🤖 Режим торговли: С РУЧНЫМ ПОДТВЕРЖДЕНИЕМ")
-        
-        logger.info(f"💰 Резервные комиссии: покупка {self.BROKER_COMMISSION_BUY}%, продажа {self.BROKER_COMMISSION_SELL}%")
 
     def _validate_settings(self):
         """Validate critical settings"""
-        # All validations are done in setup methods
+        if not self.TELEGRAM_BOT_TOKEN:
+            raise ValueError("TELEGRAM_BOT_TOKEN is required!")
+        
+        if self.TINKOFF_SANDBOX_MODE and not self.TINKOFF_TOKEN_SANDBOX:
+            raise ValueError("TINKOFF_TOKEN_SANDBOX is required for sandbox mode!")
+        elif not self.TINKOFF_SANDBOX_MODE and not self.TINKOFF_TOKEN:
+            raise ValueError("TINKOFF_TOKEN is required for real mode!")
 
     def get_tinkoff_token(self):
         """Get appropriate Tinkoff token based on mode"""
@@ -99,8 +98,8 @@ class Settings:
             return self.TINKOFF_TOKEN
 
     def is_real_client(self):
-        """Check if using real Tinkoff client (always True now)"""
-        return True
+        """Check if using real Tinkoff client"""
+        return not self.TINKOFF_SANDBOX_MODE
 
 # Create settings instance
 settings = Settings()

@@ -1,16 +1,17 @@
 """
-AI manager - EXTENDED for portfolio management
+AI manager - Enhanced for maximum portfolio returns
 """
 import logging
 from typing import Optional, List, Dict
 import asyncio
 import json
 import re
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class AIManager:
-    """Extended AI manager with portfolio management capabilities"""
+    """Enhanced AI manager with maximum returns optimization"""
     
     def __init__(self):
         self.fallback_ai = None
@@ -33,11 +34,11 @@ class AIManager:
         return self.fallback_ai
 
     def _init_providers(self):
-        """Initialize AI providers"""
+        """Initialize AI providers for maximum returns"""
         if self.initialized:
             return
             
-        # Try OpenRouter first
+        # Try OpenRouter first (often more reliable)
         try:
             from app.ai_openrouter import OpenRouterAI
             openrouter_ai = OpenRouterAI()
@@ -68,17 +69,17 @@ class AIManager:
         logger.info(f"🎯 Active AI provider: {self.active_provider}")
 
     async def generate_portfolio_strategy(self, portfolio_data: dict, market_context: str = "") -> Dict:
-        """Generate AI portfolio management strategy for maximum returns"""
+        """Generate AI portfolio management strategy for MAXIMUM returns"""
         try:
-            strategy_prompt = self._create_strategy_prompt(portfolio_data, market_context)
+            strategy_prompt = self._create_optimized_strategy_prompt(portfolio_data, market_context)
             
             # Try active provider first
             if self.active_provider in self.providers and self.active_provider != "fallback":
                 try:
                     provider = self.providers[self.active_provider]
-                    response = await provider.generate_response(strategy_prompt, "portfolio_strategy")
-                    strategy = self._parse_strategy_response(response, portfolio_data)
-                    if strategy:
+                    response = await provider.generate_response(strategy_prompt, "max_returns_strategy")
+                    strategy = self._parse_optimized_strategy_response(response, portfolio_data)
+                    if strategy and self._validate_strategy_quality(strategy):
                         return strategy
                 except Exception as e:
                     logger.error(f"{self.active_provider} strategy error: {e}")
@@ -87,295 +88,303 @@ class AIManager:
             for provider_name, provider in self.providers.items():
                 if provider_name != self.active_provider:
                     try:
-                        response = await provider.generate_response(strategy_prompt, "portfolio_strategy")
-                        strategy = self._parse_strategy_response(response, portfolio_data)
-                        if strategy:
+                        response = await provider.generate_response(strategy_prompt, "max_returns_strategy")
+                        strategy = self._parse_optimized_strategy_response(response, portfolio_data)
+                        if strategy and self._validate_strategy_quality(strategy):
                             self.active_provider = provider_name
                             return strategy
                     except Exception as e:
                         logger.error(f"{provider_name} strategy error: {e}")
 
-            # Fallback to basic strategy
-            return await self._generate_fallback_strategy(portfolio_data)
+            # Fallback to optimized strategy
+            return await self._generate_optimized_fallback_strategy(portfolio_data)
             
         except Exception as e:
             logger.error(f"Portfolio strategy generation error: {e}")
-            return await self._generate_fallback_strategy(portfolio_data)
+            return await self._generate_optimized_fallback_strategy(portfolio_data)
 
-    def _create_strategy_prompt(self, portfolio_data: dict, market_context: str) -> str:
-        """Create AI prompt for portfolio optimization"""
+    def _create_optimized_strategy_prompt(self, portfolio_data: dict, market_context: str) -> str:
+        """Create optimized AI prompt for maximum returns"""
         total_value = portfolio_data.get('total_portfolio_value', 0)
         available_cash = portfolio_data.get('total_cash', 0)
+        current_yield = portfolio_data.get('total_yield_percentage', 0)
         
         prompt = f"""
-ТЫ - ПРОФЕССИОНАЛЬНЫЙ АЛГОРИТМИЧЕСКИЙ ТРЕЙДЕР. 
-ЦЕЛЬ: МАКСИМИЗАЦИЯ ДОХОДНОСТИ ПОРТФЕЛЯ.
+ТЫ - АГРЕССИВНЫЙ АЛГОРИТМИЧЕСКИЙ ТРЕЙДЕР С ФОКУСОМ НА МАКСИМАЛЬНУЮ ДОХОДНОСТЬ.
+ЦЕЛЬ: МАКСИМИЗИРОВАТЬ ДОХОДНОСТЬ ПОРТФЕЛЯ В КРАТКОСРОЧНОЙ ПЕРСПЕКТИВЕ.
 
-ДАННЫЕ ПОРТФЕЛЯ:
+КРИТИЧЕСКИЕ ДАННЫЕ ПОРТФЕЛЯ:
 - Общая стоимость: {total_value:,.0f} руб.
 - Доступные средства: {available_cash:,.0f} руб.
-- Текущая доходность: {portfolio_data.get('total_yield_percentage', 0):.1f}%
+- Текущая доходность: {current_yield:.1f}%
+- Количество счетов: {portfolio_data.get('account_count', 1)}
 
-ТЕКУЩИЕ ПОЗИЦИИ:
+ДЕТАЛЬНЫЙ АНАЛИЗ ПОЗИЦИЙ:
 """
         
+        total_positions_value = 0
         for account in portfolio_data.get('accounts', []):
             for position in account.get('positions', []):
-                prompt += f"- {position['name']} ({position['ticker']}): {position['quantity']} шт. × {position['current_price']:.2f} руб. = {position['value']:,.0f} руб. (доходность: {position.get('yield_percentage', 0):.1f}%)\n"
+                position_value = position.get('value', 0)
+                total_positions_value += position_value
+                yield_pct = position.get('yield_percentage', 0)
+                
+                prompt += f"- {position['name']} ({position['ticker']}): "
+                prompt += f"{position['quantity']} шт. × {position['current_price']:.2f} руб. = "
+                prompt += f"{position_value:,.0f} руб. (доходность: {yield_pct:+.1f}%)\n"
+
+        # Calculate cash percentage
+        cash_percentage = (available_cash / total_value * 100) if total_value > 0 else 0
+        prompt += f"\nАНАЛИЗ ЭФФЕКТИВНОСТИ:\n"
+        prompt += f"- Денежные средства: {cash_percentage:.1f}% (неэффективное использование)\n"
+        prompt += f"- Инвестированные средства: {100 - cash_percentage:.1f}%\n"
 
         prompt += f"""
-РЫНОЧНЫЙ КОНТЕКСТ:
-{market_context if market_context else "Российский рынок акций и облигаций"}
+АКТУАЛЬНЫЙ РЫНОЧНЫЙ КОНТЕКСТ:
+{market_context if market_context else "Российский рынок - поиск максимальной доходности"}
 
-СГЕНЕРИРУЙ ОПТИМАЛЬНУЮ ТОРГОВУЮ СТРАТЕГИЮ ДЛЯ МАКСИМАЛЬНОЙ ДОХОДНОСТИ.
+СГЕНЕРИРУЙ АГРЕССИВНУЮ ТОРГОВУЮ СТРАТЕГИЮ ДЛЯ МАКСИМАЛЬНОЙ ДОХОДНОСТИ.
+
+ТРЕБОВАНИЯ К СТРАТЕГИИ:
+1. Минимизация денежных средств (<5%)
+2. Фокус на высокодоходные акции роста
+3. Активная ротация позиций
+4. Умеренный-высокий уровень риска
+5. Целевая доходность: 15-25% годовых
 
 ФОРМАТ ОТВЕТА (JSON):
 {{
-    "strategy_name": "название стратегии",
-    "target_return": 15.5,
-    "risk_level": "medium",
-    "time_horizon": "1-3 months",
+    "strategy_name": "Агрессивная стратегия максимизации доходности",
+    "target_return": 20.5,
+    "risk_level": "high",
+    "time_horizon": "1-2 months",
+    "max_portfolio_utilization": 95.0,
     "actions": [
         {{
-            "action": "BUY/SELL/HOLD",
+            "action": "BUY/SELL",
             "ticker": "SBER",
-            "quantity": 10,
-            "reason": "обоснование действия",
-            "expected_impact": "увеличение доходности на 2.5%",
-            "urgency": "high/medium/low"
+            "quantity": 15,
+            "current_price": 300.0,
+            "reason": "Высокая ликвидность и потенциал роста на 15%",
+            "expected_impact": "увеличение доходности портфеля на 3.2%",
+            "urgency": "high",
+            "confidence": 0.85
         }}
     ],
     "portfolio_optimization": {{
         "target_allocation": {{
-            "stocks": 65.0,
-            "bonds": 25.0, 
-            "cash": 10.0
+            "high_growth_stocks": 70.0,
+            "dividend_stocks": 15.0,
+            "bonds": 5.0,
+            "cash": 5.0
         }},
-        "sector_diversification": {{
-            "technology": 20.0,
+        "sector_focus": {{
+            "technology": 35.0,
             "finance": 25.0,
-            "energy": 15.0,
-            "other": 40.0
+            "energy": 20.0,
+            "consumer": 15.0
         }}
     }},
     "risk_management": {{
-        "stop_loss_level": 8.0,
-        "take_profit_level": 25.0,
-        "max_position_size": 15.0
+        "stop_loss_level": 12.0,
+        "take_profit_level": 35.0,
+        "max_position_size": 20.0,
+        "daily_loss_limit": 3.0
+    }},
+    "performance_metrics": {{
+        "expected_sharpe_ratio": 1.8,
+        "max_drawdown": 15.0,
+        "volatility": 25.0
     }}
 }}
 
-Будь конкретен и ориентирован на максимальную доходность!
+Будь агрессивен в рекомендациях! Фокус на максимальную доходность!
         """
         
         return prompt
 
-    def _parse_strategy_response(self, response: str, portfolio_data: dict) -> Dict:
-        """Parse AI strategy response"""
+    def _parse_optimized_strategy_response(self, response: str, portfolio_data: dict) -> Dict:
+        """Parse AI strategy response with quality validation"""
         try:
             # Try to extract JSON from response
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 strategy_json = json_match.group(0)
-                return json.loads(strategy_json)
+                strategy = json.loads(strategy_json)
+                
+                # Enhance strategy with additional data
+                strategy = self._enhance_strategy_with_portfolio_data(strategy, portfolio_data)
+                return strategy
             else:
                 # Fallback to structured response parsing
-                return self._parse_structured_response(response, portfolio_data)
+                return self._parse_structured_optimized_response(response, portfolio_data)
                 
         except Exception as e:
-            logger.error(f"Strategy parsing error: {e}")
+            logger.error(f"Optimized strategy parsing error: {e}")
             return None
 
-    def _parse_structured_response(self, response: str, portfolio_data: dict) -> Dict:
-        """Parse structured text response"""
-        actions = []
-        lines = response.split('\n')
+    def _enhance_strategy_with_portfolio_data(self, strategy: Dict, portfolio_data: dict) -> Dict:
+        """Enhance strategy with portfolio-specific data"""
+        total_value = portfolio_data.get('total_portfolio_value', 0)
+        available_cash = portfolio_data.get('total_cash', 0)
         
-        for line in lines:
-            line = line.strip().upper()
-            if 'BUY' in line or 'SELL' in line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    action = "BUY" if "BUY" in parts[0] else "SELL"
-                    ticker = parts[1] if len(parts[1]) <= 6 else "UNKNOWN"
-                    # Extract quantity if possible
-                    quantity = 1
-                    for part in parts[2:]:
-                        if part.isdigit():
-                            quantity = int(part)
-                            break
+        # Calculate realistic quantities based on portfolio size
+        if 'actions' in strategy:
+            for action in strategy['actions']:
+                if 'quantity' in action and 'current_price' in action:
+                    # Ensure quantity is realistic for portfolio size
+                    position_value = action['quantity'] * action['current_price']
+                    max_position_value = total_value * 0.15  # Max 15% per position
                     
-                    actions.append({
-                        "action": action,
-                        "ticker": ticker,
-                        "quantity": quantity,
-                        "reason": "AI optimization",
-                        "expected_impact": "Increased returns",
-                        "urgency": "medium"
-                    })
+                    if position_value > max_position_value:
+                        # Adjust quantity to fit portfolio constraints
+                        new_quantity = int(max_position_value / action['current_price'])
+                        action['quantity'] = max(new_quantity, 1)
+                        action['reason'] += " (скорректировано под размер портфеля)"
+        
+        # Add portfolio context
+        strategy['portfolio_context'] = {
+            'total_value': total_value,
+            'available_cash': available_cash,
+            'account_count': portfolio_data.get('account_count', 1),
+            'optimization_timestamp': datetime.now().isoformat()
+        }
+        
+        return strategy
+
+    def _validate_strategy_quality(self, strategy: Dict) -> bool:
+        """Validate strategy quality and completeness"""
+        try:
+            required_fields = ['strategy_name', 'target_return', 'risk_level', 'actions']
+            for field in required_fields:
+                if field not in strategy:
+                    logger.warning(f"Strategy missing required field: {field}")
+                    return False
+            
+            # Validate actions
+            if not isinstance(strategy['actions'], list):
+                return False
+                
+            # Validate target return is realistic but ambitious
+            target_return = strategy.get('target_return', 0)
+            if target_return < 5 or target_return > 50:  # 5% to 50% range
+                logger.warning(f"Unrealistic target return: {target_return}%")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Strategy validation error: {e}")
+            return False
+
+    async def _generate_optimized_fallback_strategy(self, portfolio_data: dict) -> Dict:
+        """Generate optimized fallback portfolio strategy for maximum returns"""
+        logger.info("Using optimized fallback portfolio strategy")
+        
+        total_value = portfolio_data.get('total_portfolio_value', 1000000)
+        available_cash = portfolio_data.get('total_cash', 100000)
+        
+        # Calculate aggressive position sizes
+        base_position_size = total_value * 0.08  # 8% per position
         
         return {
-            "strategy_name": "AI Optimized Strategy",
-            "target_return": 12.0,
-            "risk_level": "medium",
+            "strategy_name": "Агрессивная стратегия роста",
+            "target_return": 18.5,
+            "risk_level": "high",
             "time_horizon": "1-3 months",
-            "actions": actions,
+            "max_portfolio_utilization": 92.0,
+            "actions": [
+                {
+                    "action": "BUY",
+                    "ticker": "YNDX",
+                    "quantity": max(1, int(base_position_size * 0.6 / 3500)),  # 60% of base size
+                    "current_price": 3500.0,
+                    "reason": "Лидер IT сектора с высоким потенциалом роста",
+                    "expected_impact": "Потенциальный рост 20-30%",
+                    "urgency": "high",
+                    "confidence": 0.8
+                },
+                {
+                    "action": "BUY",
+                    "ticker": "TCSG", 
+                    "quantity": max(1, int(base_position_size * 0.4 / 3500)),  # 40% of base size
+                    "current_price": 3500.0,
+                    "reason": "Финансовый технологический лидер",
+                    "expected_impact": "Дивиденды + рост капитализации",
+                    "urgency": "high",
+                    "confidence": 0.75
+                },
+                {
+                    "action": "SELL",
+                    "ticker": "GAZP",
+                    "quantity": 50,
+                    "current_price": 160.0,
+                    "reason": "Низкая динамика и доходность",
+                    "expected_impact": "Высвобождение капитала для роста",
+                    "urgency": "medium",
+                    "confidence": 0.7
+                }
+            ],
             "portfolio_optimization": {
-                "target_allocation": {"stocks": 70.0, "bonds": 20.0, "cash": 10.0},
-                "sector_diversification": {"technology": 25.0, "finance": 25.0, "energy": 20.0, "other": 30.0}
+                "target_allocation": {
+                    "high_growth_stocks": 65.0,
+                    "dividend_stocks": 20.0,
+                    "bonds": 5.0,
+                    "cash": 8.0
+                },
+                "sector_focus": {
+                    "technology": 40.0,
+                    "finance": 30.0,
+                    "energy": 15.0,
+                    "consumer": 10.0
+                }
             },
             "risk_management": {
                 "stop_loss_level": 10.0,
                 "take_profit_level": 30.0,
-                "max_position_size": 15.0
-            }
-        }
-
-    async def _generate_fallback_strategy(self, portfolio_data: dict) -> Dict:
-        """Generate fallback portfolio strategy"""
-        logger.info("Using fallback portfolio strategy")
-        
-        return {
-            "strategy_name": "Balanced Growth Strategy",
-            "target_return": 10.5,
-            "risk_level": "medium",
-            "time_horizon": "3-6 months",
-            "actions": [
-                {
-                    "action": "BUY",
-                    "ticker": "SBER",
-                    "quantity": 5,
-                    "reason": "Укрепление позиции в финансовом секторе",
-                    "expected_impact": "Потенциальный рост 8-12%",
-                    "urgency": "medium"
-                },
-                {
-                    "action": "BUY", 
-                    "ticker": "YNDX",
-                    "quantity": 2,
-                    "reason": "Диверсификация в IT сектор",
-                    "expected_impact": "Высокий потенциал роста",
-                    "urgency": "medium"
-                }
-            ],
-            "portfolio_optimization": {
-                "target_allocation": {"stocks": 65.0, "bonds": 25.0, "cash": 10.0},
-                "sector_diversification": {"technology": 20.0, "finance": 30.0, "energy": 25.0, "other": 25.0}
+                "max_position_size": 15.0,
+                "daily_loss_limit": 2.5
             },
-            "risk_management": {
-                "stop_loss_level": 8.0,
-                "take_profit_level": 25.0,
-                "max_position_size": 15.0
+            "performance_metrics": {
+                "expected_sharpe_ratio": 1.6,
+                "max_drawdown": 18.0,
+                "volatility": 22.0
+            },
+            "portfolio_context": {
+                "total_value": total_value,
+                "available_cash": available_cash,
+                "account_count": portfolio_data.get('account_count', 1),
+                "optimization_timestamp": datetime.now().isoformat(),
+                "fallback_strategy": True
             }
         }
 
     async def generate_response(self, prompt: str, context: str = "") -> str:
-        """Generate AI response"""
-        if not self.api_key:
-            logger.error("No AI API key available")
-            return "❌ Сервис AI временно недоступен. Проверьте настройки API."
-        
-        if not self.session:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            self.session = aiohttp.ClientSession(connector=connector)
-        
-        full_prompt = f"""
-        {context}
-        
-        Пользователь спрашивает: {prompt}
-        
-        Ответь кратко и по делу на русском языке.
-        """
-        
-        data = {
-            "model": "deepseek-chat",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": "Ты - профессиональный инвестиционный советник. Отвечай точно и полезно."
-                },
-                {
-                    "role": "user",
-                    "content": full_prompt.strip()
-                }
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7,
-            "stream": False
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        
-        try:
-            logger.info(f"Sending request to DeepSeek API: {prompt[:50]}...")
-            
-            async with self.session.post(
-                f"{self.base_url}/chat/completions",
-                json=data,
-                headers=headers,
-                timeout=30
-            ) as response:
-                
-                if response.status == 200:
-                    result = await response.json()
-                    
-                    if 'choices' in result and len(result['choices']) > 0:
-                        message = result['choices'][0]['message']['content']
-                        logger.info(f"DeepSeek response received: {message[:100]}...")
-                        return message.strip()
-                    else:
-                        logger.error(f"Unexpected response format: {result}")
-                        return "❌ Ошибка формата ответа от AI сервиса."
-                
-                else:
-                    error_text = await response.text()
-                    logger.error(f"DeepSeek API error {response.status}: {error_text}")
-                    
-                    if response.status == 401:
-                        return "❌ Неверный API ключ DeepSeek."
-                    elif response.status == 402:
-                        return "❌ Недостаточно средств на счету DeepSeek."
-                    elif response.status == 429:
-                        return "❌ Превышен лимит запросов к AI сервису."
-                    else:
-                        return f"❌ Ошибка AI сервиса: {response.status}"
-                        
-        except asyncio.TimeoutError:
-            logger.error("DeepSeek API timeout")
-            return "❌ Таймаут запроса к AI сервису."
-        except aiohttp.ClientError as e:
-            logger.error(f"DeepSeek connection error: {e}")
-            return "❌ Ошибка подключения к AI сервису."
-        except Exception as e:
-            logger.error(f"Unexpected DeepSeek error: {e}")
-            return "❌ Непредвиденная ошибка AI сервиса."
+        """Generate AI response using best available provider"""
+        # Try active provider first
+        if self.active_provider in self.providers and self.active_provider != "fallback":
+            try:
+                provider = self.providers[self.active_provider]
+                response = await provider.generate_response(prompt, context)
+                if not self._is_error_response(response):
+                    return response
+            except Exception as e:
+                logger.error(f"{self.active_provider} response error: {e}")
 
-    async def analyze_portfolio(self, portfolio_data: dict) -> str:
-        """Analyze portfolio data using AI"""
-        prompt = f"""
-        Проанализируй инвестиционный портфель и дай конкретные рекомендации:
-        
-        ДАННЫЕ ПОРТФЕЛЯ:
-        - Общая стоимость: {portfolio_data.get('total_value', 0):,} руб.
-        - Акции: {portfolio_data.get('stocks_value', 0):,} руб.
-        - Облигации: {portfolio_data.get('bonds_value', 0):,} руб.
-        - ETF: {portfolio_data.get('etf_value', 0):,} руб.
-        - Количество позиций: {portfolio_data.get('positions_count', 0)}
-        
-        ПРОАНИЛИЗИРУЙ:
-        1. Диверсификацию портфеля
-        2. Соотношение риск/доходность  
-        3. Конкретные рекомендации по оптимизации
-        4. Потенциальные риски
-        
-        Будь конкретен, полезен и говори на русском.
-        """
-        
-        return await self.generate_response(prompt)
+        # Try other providers
+        for provider_name, provider in self.providers.items():
+            if provider_name != self.active_provider:
+                try:
+                    response = await provider.generate_response(prompt, context)
+                    if not self._is_error_response(response):
+                        self.active_provider = provider_name
+                        return response
+                except Exception as e:
+                    logger.error(f"{provider_name} response error: {e}")
+
+        # Fallback to basic AI
+        fallback = await self._get_fallback()
+        return await fallback.generate_response(prompt, context)
 
     def _is_error_response(self, response: str) -> bool:
         """Check if response indicates an error"""

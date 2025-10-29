@@ -50,8 +50,8 @@ class TinkoffClientManager:
         return Client(token=token, app_name=settings.TINKOFF_APP_NAME)
     
     def is_real_client(self):
-        """Check if using real Tinkoff client (always True)"""
-        return True
+        """Check if using real Tinkoff client"""
+        return not settings.TINKOFF_SANDBOX_MODE
     
     def execute_operation(self, operation):
         """Execute operation with proper client management"""

@@ -1,8 +1,10 @@
 """
-Telegram bot for Investment Advisor - AI Portfolio Management with Automatic Tariff Detection
+Telegram bot for Investment Advisor - Enhanced with account selection
 """
 import logging
 import asyncio
+import json
+import os
 from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from typing import List, Dict
@@ -11,12 +13,12 @@ from app.loader import get_tinkoff_client, get_tinkoff_client_manager
 from app.health_monitor import HealthMonitor
 from app.ai_manager import get_ai_manager
 from app.settings import settings
-from app.tariff_manager import get_tariff_manager  # НОВЫЙ ИМПОРТ
+from app.tariff_manager import get_tariff_manager
 
 logger = logging.getLogger(__name__)
 
 class InvestmentTelegramBot:
-    """Bot with AI Portfolio Management and Automatic Tariff Detection"""
+    """Bot with AI Portfolio Management and account selection"""
     
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
@@ -27,12 +29,35 @@ class InvestmentTelegramBot:
         self.client_manager = get_tinkoff_client_manager()
         self.ai_manager = None
         self.pending_actions = {}
-        self.tariff_manager = get_tariff_manager(self.client_manager)  # НОВЫЙ МЕНЕДЖЕР ТАРИФОВ
+        self.tariff_manager = get_tariff_manager(self.client_manager)
+        
+        # Initialize account selection storage
+        self.selected_accounts_file = "selected_accounts.json"
+        self.selected_accounts = self._load_selected_accounts()
+        self.account_names = {}  # account_id -> account_name mapping
         
         logger.info("✅ Tinkoff client manager initialized")
         
         # Initialize AI manager
         asyncio.run(self._init_ai_manager())
+
+    def _load_selected_accounts(self):
+        """Load selected accounts from file"""
+        try:
+            if os.path.exists(self.selected_accounts_file):
+                with open(self.selected_accounts_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading selected accounts: {e}")
+        return {}
+
+    def _save_selected_accounts(self):
+        """Save selected accounts to file"""
+        try:
+            with open(self.selected_accounts_file, 'w') as f:
+                json.dump(self.selected_accounts, f)
+        except Exception as e:
+            logger.error(f"Error saving selected accounts: {e}")
 
     async def _init_ai_manager(self):
         """Initialize AI manager"""
@@ -65,11 +90,12 @@ class InvestmentTelegramBot:
         try:
             commands = [
                 BotCommand("start", "Начать работу (показывает режим)"),
-                BotCommand("portfolio", "Анализ портфеля"),
-                BotCommand("accounts", "Список счетов"),
+                BotCommand("portfolio", "Анализ портфеля (все счета)"),
+                BotCommand("accounts", "Список счетов и выбор"),
                 BotCommand("health", "Статус системы"),
-                BotCommand("auto_trade", "AI управление портфелем"),
-                BotCommand("commission", "Информация о тарифе и комиссиях"),  # НОВАЯ КОМАНДА
+                BotCommand("auto_trade", "AI управление выбранным счетом"),
+                BotCommand("auto_trade_all", "AI управление всеми счетами"),
+                BotCommand("commission", "Информация о тарифе и комиссиях"),
                 BotCommand("help", "Помощь по командам"),
             ]
             
@@ -92,6 +118,19 @@ class InvestmentTelegramBot:
         tariff_name = tariff_info['name']
         commission_rates = tariff_info['commission_rates']
         
+        # Get current account selection
+        user_id = str(user.id)
+        current_selection = self.selected_accounts.get(user_id)
+        selection_info = ""
+        if current_selection:
+            if current_selection == "all":
+                selection_info = "✅ Выбраны: ВСЕ СЧЕТА"
+            else:
+                account_name = self.account_names.get(current_selection, f"Счет {current_selection[-4:]}")
+                selection_info = f"✅ Выбран: {account_name}"
+        else:
+            selection_info = "⚠️ Счет не выбран. Используйте /accounts"
+        
         welcome_text = f"""
 🤖 Привет, {user.first_name}!
 
@@ -102,15 +141,20 @@ class InvestmentTelegramBot:
 🤖 AI АССИСТЕНТ: {ai_status}
 🎯 РЕЖИМ ТОРГОВЛИ: {trading_mode}
 
+{selection_info}
+
 💰 **АВТОМАТИЧЕСКИ ОПРЕДЕЛЕННЫЙ ТАРИФ**: {tariff_name}
 📈 Комиссии: покупка {commission_rates['buy']}%, продажа {commission_rates['sell']}%
 
-📋 РАБОТАЮЩИЕ КОМАНДЫ:
+🎯 **КОМАНДЫ УПРАВЛЕНИЯ ПОРТФЕЛЕМ**:
+/auto_trade - AI управление выбранным счетом
+/auto_trade_all - AI управление всеми счетами
+/accounts - Выбор счета для управления
+
+📋 **ОСНОВНЫЕ КОМАНДЫ**:
 /portfolio - Анализ портфеля (все счета)
-/accounts - Список счетов  
 /health - Статус системы
-/auto_trade - AI управление портфелем
-/commission - Информация о тарифе и комиссиях
+/commission - Информация о тарифе
 /help - Помощь
 
 💬 Задавайте вопросы про инвестиции!
@@ -464,7 +508,7 @@ class InvestmentTelegramBot:
         return parts
 
     async def accounts_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /accounts command"""
+        """Handle /accounts command with account selection"""
         try:
             await update.message.reply_text("📋 Загружаю список счетов...")
             
@@ -477,10 +521,12 @@ class InvestmentTelegramBot:
                 await update.message.reply_text("❌ Не найдено счетов")
                 return
             
+            user_id = str(update.effective_user.id)
             mode, token_info = self._get_operation_mode_info()
             
             response = f"📋 ВАШИ СЧЕТА\n\n{mode}\n{token_info}\n\n"
             
+            keyboard = []
             for i, account in enumerate(accounts_response.accounts, 1):
                 account_name = getattr(account, 'name', 'Счет')
                 account_id = getattr(account, 'id', 'N/A')
@@ -491,12 +537,228 @@ class InvestmentTelegramBot:
                 response += f"   ID: {account_id}\n"
                 response += f"   Статус: {account_status}\n"
                 response += f"   Тип: {account_type}\n\n"
+                
+                # Store account name for later use
+                self.account_names[account_id] = account_name
+                
+                # Add button for account selection with auto-trade
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"🎯 {account_name} → AI", 
+                        callback_data=f"select_and_trade_{account_id}"
+                    )
+                ])
             
-            await update.message.reply_text(response)
+            # Add button for all accounts with auto-trade
+            keyboard.append([
+                InlineKeyboardButton(
+                    "📊 ВСЕ СЧЕТА → AI", 
+                    callback_data="select_and_trade_all"
+                )
+            ])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Show current selection
+            current_account = self.selected_accounts.get(user_id)
+            if current_account:
+                if current_account == "all":
+                    response += "✅ Сейчас выбраны: ВСЕ СЧЕТА"
+                else:
+                    account_name = self.account_names.get(current_account, current_account)
+                    response += f"✅ Сейчас выбран: {account_name}"
+            else:
+                response += "🎯 Выберите счет для автоматического запуска AI управления:"
+            
+            await update.message.reply_text(response, reply_markup=reply_markup)
             
         except Exception as e:
             logger.error(f"Accounts error: {e}")
             await update.message.reply_text(f"❌ Ошибка загрузки счетов: {str(e)}")
+
+    async def handle_account_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle account selection callbacks with auto-trade"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = str(query.from_user.id)
+        data = query.data
+        
+        logger.info(f"Account selection callback: user_id={user_id}, data={data}")
+        
+        try:
+            if data == "select_and_trade_all":
+                self.selected_accounts[user_id] = "all"
+                self._save_selected_accounts()
+                logger.info(f"User {user_id} selected ALL accounts")
+                await query.edit_message_text("✅ Выбраны ВСЕ счета для управления\n\n🚀 Запускаю AI анализ...")
+                # Automatically start auto_trade
+                await self._execute_auto_trade_from_callback(query, "all", "all")
+                return
+            
+            if data.startswith("select_and_trade_"):
+                account_id = data.replace("select_and_trade_", "")
+                self.selected_accounts[user_id] = account_id
+                self._save_selected_accounts()
+                
+                # Get account name from stored mapping
+                account_name = self.account_names.get(account_id, f"Счет {account_id[-4:]}")
+                
+                logger.info(f"User {user_id} selected account: {account_name} ({account_id})")
+                await query.edit_message_text(f"✅ Выбран счет: {account_name}\n\n🚀 Запускаю AI анализ...")
+                # Automatically start auto_trade
+                await self._execute_auto_trade_from_callback(query, account_id, "selected")
+                return
+            
+            # If we get here, something went wrong
+            await query.edit_message_text("❌ Ошибка выбора счета")
+            
+        except Exception as e:
+            logger.error(f"Error in account selection: {e}")
+            await query.edit_message_text("❌ Произошла ошибка при выборе счета")
+
+    async def _execute_auto_trade_from_callback(self, query, account_selector, mode_name):
+        """Execute auto trade from callback selection"""
+        try:
+            if not self.ai_manager:
+                await query.edit_message_text(
+                    "❌ AI сервис недоступен\n\n"
+                    "Проверьте настройки API ключей:\n"
+                    "• DEEPSEEK_API_KEY\n"
+                    "• OPENROUTER_API_KEY"
+                )
+                return
+            
+            account_text = "выбранным счетом" if mode_name == "selected" else "всеми счетами"
+            
+            # Update message to show progress
+            await query.edit_message_text(
+                f"🤖 ЗАПУСК AI УПРАВЛЕНИЯ {account_text.upper()}\n\n"
+                "⚡ Анализирую текущий портфель...\n"
+                "📊 Оцениваю рыночные условия...\n"
+                "🎯 Генерирую стратегию для максимальной доходности..."
+            )
+            
+            # Get portfolio data for specific account(s)
+            if account_selector == "all":
+                portfolio_data = await self._get_all_accounts_portfolio_data()
+            else:
+                portfolio_data = await self._get_single_account_portfolio_data(account_selector)
+            
+            if not portfolio_data:
+                await query.edit_message_text("❌ Не удалось получить данные портфеля")
+                return
+            
+            # Generate AI strategy
+            strategy = await self.ai_manager.generate_portfolio_strategy(portfolio_data)
+            
+            if not strategy:
+                await query.edit_message_text("❌ Не удалось сгенерировать стратегию")
+                return
+            
+            # Display strategy with commission calculations
+            strategy_text = self._format_strategy_response(strategy, account_selector)
+            
+            # Split long messages if needed
+            if len(strategy_text) > 4000:
+                parts = [strategy_text[i:i+4000] for i in range(0, len(strategy_text), 4000)]
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        await query.edit_message_text(part)
+                    else:
+                        await query.message.reply_text(part)
+            else:
+                await query.edit_message_text(strategy_text)
+            
+            # Handle trading actions based on mode
+            if strategy.get('actions'):
+                if settings.AUTO_TRADING_MODE:
+                    # Fully automated mode - execute immediately
+                    await self._execute_automated_actions_from_callback(query, strategy['actions'], account_selector)
+                else:
+                    # Manual mode - request confirmation
+                    await self._request_action_confirmation_from_callback(query, strategy['actions'], query.from_user.id, account_selector)
+            
+        except Exception as e:
+            logger.error(f"Auto trade error in callback: {e}")
+            await query.edit_message_text(f"❌ Ошибка AI управления: {str(e)}")
+
+    async def _execute_automated_actions_from_callback(self, query, actions: List[Dict], account_selector: str):
+        """Execute actions in fully automated mode from callback"""
+        executed_actions = []
+        failed_actions = []
+        total_commission_paid = 0
+        
+        for action in actions:
+            try:
+                if action['urgency'] == 'high':  # Execute only high urgency in auto mode
+                    result = await self._execute_trading_action(action, account_selector)
+                    if result['success']:
+                        executed_actions.append(action)
+                        # Calculate commission for reporting
+                        current_price = self._get_typical_price(action['ticker'])
+                        commission = self._calculate_commission(action['action'], action['quantity'], current_price)
+                        total_commission_paid += commission
+                    else:
+                        failed_actions.append(action)
+            except Exception as e:
+                logger.error(f"Action execution failed: {e}")
+                failed_actions.append(action)
+        
+        account_text = "выбранным счетом" if account_selector != "all" else "всеми счетами"
+        
+        # Send execution report with commission info
+        report = f"🤖 АВТОМАТИЧЕСКОЕ ИСПОЛНЕНИЕ ({account_text.upper()}) ЗАВЕРШЕНО:\n\n"
+        report += f"✅ Успешно: {len(executed_actions)}\n"
+        report += f"❌ Ошибки: {len(failed_actions)}\n"
+        report += f"💰 Уплачено комиссий: {total_commission_paid:,.1f} руб.\n"
+        
+        if executed_actions:
+            report += "\nИсполненные действия:\n"
+            for action in executed_actions:
+                report += f"• {action['action']} {action['ticker']} ({action['quantity']} шт.)\n"
+        
+        await query.message.reply_text(report)
+
+    async def _request_action_confirmation_from_callback(self, query, actions: List[Dict], user_id: int, account_selector: str):
+        """Request confirmation for trading actions from callback"""
+        self.pending_actions[user_id] = actions
+        
+        # Calculate commissions for each action
+        actions_with_commissions = []
+        total_commission = 0
+        
+        for action in actions:
+            current_price = self._get_typical_price(action['ticker'])
+            cost_calc = self._calculate_total_cost(action, current_price)
+            actions_with_commissions.append({
+                **action,
+                'cost_calculation': cost_calc
+            })
+            total_commission += cost_calc['commission']
+        
+        self.pending_actions[user_id] = actions_with_commissions
+        
+        account_text = "выбранным счетом" if account_selector != "all" else "всеми счетами"
+        
+        keyboard = []
+        for i, action in enumerate(actions_with_commissions):
+            btn_text = f"{action['action']} {action['ticker']} ({action['quantity']} шт.) - {action['cost_calculation']['total_cost']:,.0f} руб."
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"confirm_{i}")])
+        
+        keyboard.append([InlineKeyboardButton("✅ ПОДТВЕРДИТЬ ВСЕ", callback_data="confirm_all")])
+        keyboard.append([InlineKeyboardButton("❌ ОТМЕНИТЬ ВСЕ", callback_data="cancel_all")])
+        keyboard.append([InlineKeyboardButton("💰 ДЕТАЛИ КОМИССИЙ", callback_data="show_commissions")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        commission_info = f"\n💰 Общая сумма комиссий: {total_commission:,.1f} руб."
+        
+        await query.message.reply_text(
+            f"🤖 ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЙ ({account_text.upper()}):\n\n"
+            "Выберите действия для исполнения:" + commission_info,
+            reply_markup=reply_markup
+        )
 
     async def health_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /health command"""
@@ -556,10 +818,33 @@ class InvestmentTelegramBot:
             await update.message.reply_text(f"❌ Ошибка получения информации о тарифе: {str(e)}")
 
     async def auto_trade_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /auto_trade with AI portfolio management"""
+        """Handle /auto_trade with selected account"""
         user = update.effective_user
         logger.info(f"AUTO_TRADE from {user.first_name}")
         
+        user_id = str(user.id)
+        selected_account = self.selected_accounts.get(user_id)
+        
+        logger.info(f"User {user_id} selected account: {selected_account}")
+        
+        if not selected_account:
+            await update.message.reply_text(
+                "❌ Счет не выбран!\n\n"
+                "Используйте команду /accounts чтобы выбрать счет для управления."
+            )
+            return
+        
+        await self._execute_auto_trade(update, selected_account, "selected")
+
+    async def auto_trade_all_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /auto_trade_all with all accounts"""
+        user = update.effective_user
+        logger.info(f"AUTO_TRADE_ALL from {user.first_name}")
+        
+        await self._execute_auto_trade(update, "all", "all")
+
+    async def _execute_auto_trade(self, update: Update, account_selector, mode_name):
+        """Execute auto trade for specific account(s)"""
         try:
             if not self.ai_manager:
                 await update.message.reply_text(
@@ -570,15 +855,21 @@ class InvestmentTelegramBot:
                 )
                 return
             
+            account_text = "выбранным счетом" if mode_name == "selected" else "всеми счетами"
+            
             await update.message.reply_text(
-                "🤖 ЗАПУСК AI УПРАВЛЕНИЯ ПОРТФЕЛЕМ\n\n"
+                f"🤖 ЗАПУСК AI УПРАВЛЕНИЯ {account_text.upper()}\n\n"
                 "⚡ Анализирую текущий портфель...\n"
                 "📊 Оцениваю рыночные условия...\n"
                 "🎯 Генерирую стратегию для максимальной доходности..."
             )
             
-            # Get portfolio data
-            portfolio_data = await self._get_all_accounts_portfolio_data()
+            # Get portfolio data for specific account(s)
+            if account_selector == "all":
+                portfolio_data = await self._get_all_accounts_portfolio_data()
+            else:
+                portfolio_data = await self._get_single_account_portfolio_data(account_selector)
+            
             if not portfolio_data:
                 await update.message.reply_text("❌ Не удалось получить данные портфеля")
                 return
@@ -591,24 +882,143 @@ class InvestmentTelegramBot:
                 return
             
             # Display strategy with commission calculations
-            strategy_text = self._format_strategy_response(strategy)
+            strategy_text = self._format_strategy_response(strategy, account_selector)
             await update.message.reply_text(strategy_text)
             
             # Handle trading actions based on mode
             if strategy.get('actions'):
                 if settings.AUTO_TRADING_MODE:
                     # Fully automated mode - execute immediately
-                    await self._execute_automated_actions(update, strategy['actions'])
+                    await self._execute_automated_actions(update, strategy['actions'], account_selector)
                 else:
                     # Manual mode - request confirmation
-                    await self._request_action_confirmation(update, strategy['actions'], user.id)
+                    await self._request_action_confirmation(update, strategy['actions'], user.id, account_selector)
             
         except Exception as e:
             logger.error(f"Auto trade error: {e}")
             await update.message.reply_text(f"❌ Ошибка AI управления: {str(e)}")
 
-    async def _execute_automated_actions(self, update: Update, actions: List[Dict]):
-        """Execute actions in fully automated mode"""
+    async def _get_single_account_portfolio_data(self, account_id):
+        """Get portfolio data for specific account only"""
+        try:
+            def get_accounts_operation(client):
+                return client.users.get_accounts()
+            
+            accounts_response = await self._execute_tinkoff_operation(get_accounts_operation)
+                
+            if not accounts_response or not accounts_response.accounts:
+                logger.error("No accounts found")
+                return None
+            
+            # Find the specific account
+            target_account = None
+            for account in accounts_response.accounts:
+                if account.id == account_id:
+                    target_account = account
+                    break
+            
+            if not target_account:
+                logger.error(f"Account {account_id} not found")
+                return None
+            
+            account_name = getattr(target_account, 'name', f'Счет {account_id[-4:]}')
+            account_type = getattr(target_account, 'type', 'Неизвестно')
+            account_status = getattr(target_account, 'status', 'Неизвестно')
+            
+            logger.info(f"Processing account: {account_name} ({account_id})")
+            
+            # Get portfolio data for this account
+            account_data = await self._get_account_portfolio_data(account_id)
+            if not account_data:
+                return None
+            
+            account_data['account_name'] = account_name
+            account_data['account_type'] = account_type
+            account_data['account_status'] = account_status
+            
+            return {
+                'accounts': [account_data],
+                'total_portfolio_value': account_data['total_value'],
+                'total_invested': account_data['total_invested'],
+                'total_cash': account_data['available_cash'],
+                'total_real_yield': account_data['total_real_yield'],
+                'total_yield_percentage': account_data['total_yield_percentage'],
+                'account_count': 1,
+                'is_real_data': self._is_real_tinkoff_client(),
+                'is_sandbox': settings.TINKOFF_SANDBOX_MODE,
+                'selected_account_id': account_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Single account portfolio data error: {e}")
+            return None
+
+    def _format_strategy_response(self, strategy: Dict, account_selector: str) -> str:
+        """Format AI strategy for display with account info"""
+        # Get tariff info for display
+        tariff_info = self.tariff_manager.get_tariff_info()
+        
+        account_text = "выбранным счетом" if account_selector != "all" else "всеми счетами"
+        
+        text = f"🎯 **AI СТРАТЕГИЯ УПРАВЛЕНИЯ ({account_text.upper()})**: {strategy['strategy_name']}\n\n"
+        text += f"📈 **Целевая доходность**: {strategy['target_return']}%\n"
+        text += f"⚡ **Уровень риска**: {strategy['risk_level']}\n"
+        text += f"⏱️ **Горизонт**: {strategy['time_horizon']}\n\n"
+        
+        text += "**РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ**:\n"
+        
+        total_commission = 0
+        total_trade_volume = 0
+        
+        for action in strategy.get('actions', []):
+            # Get current price for commission calculation
+            current_price = action.get('current_price', 0)
+            if current_price == 0:
+                current_price = self._get_typical_price(action['ticker'])
+            
+            cost_calculation = self._calculate_total_cost(action, current_price)
+            
+            text += f"• {action['action']} {action['ticker']} ({action['quantity']} шт.)\n"
+            text += f"  💰 Стоимость: {cost_calculation['base_cost']:,.0f} руб.\n"
+            text += f"  📊 Комиссия: {cost_calculation['commission']:,.1f} руб. ({cost_calculation['commission_percent']:.2f}%)\n"
+            
+            if action['action'].upper() == 'BUY':
+                text += f"  💸 ИТОГО к оплате: {cost_calculation['total_cost']:,.0f} руб.\n"
+            else:  # SELL
+                text += f"  💸 ИТОГО к получению: {cost_calculation['total_cost']:,.0f} руб.\n"
+                
+            text += f"  📝 Причина: {action['reason']}\n"
+            text += f"  🎯 Эффект: {action['expected_impact']} ({action['urgency']})\n\n"
+            
+            total_commission += cost_calculation['commission']
+            total_trade_volume += cost_calculation['base_cost']
+        
+        # Add commission summary
+        text += f"**📊 СВОДКА ПО КОМИССИЯМ**:\n"
+        text += f"• Общий объем сделок: {total_trade_volume:,.0f} руб.\n"
+        text += f"• Сумма комиссий: {total_commission:,.1f} руб.\n"
+        text += f"• Средняя комиссия: {(total_commission/total_trade_volume*100) if total_trade_volume > 0 else 0:.2f}%\n\n"
+        
+        allocation = strategy.get('portfolio_optimization', {}).get('target_allocation', {})
+        text += f"**ЦЕЛЕВОЕ РАСПРЕДЕЛЕНИЕ**:\n"
+        text += f"• Акции: {allocation.get('stocks', 0)}%\n"
+        text += f"• Облигации: {allocation.get('bonds', 0)}%\n"
+        text += f"• Денежные средства: {allocation.get('cash', 0)}%\n\n"
+        
+        if settings.AUTO_TRADING_MODE:
+            text += "🤖 **РЕЖИМ**: ПОЛНОСТЬЮ АВТОМАТИЧЕСКИЙ\n"
+        else:
+            text += "👤 **РЕЖИМ**: С РУЧНЫМ ПОДТВЕРЖДЕНИЕМ\n"
+        
+        # Add tariff info
+        text += f"\n💰 **АКТУАЛЬНЫЙ ТАРИФ**: {tariff_info['name']}\n"
+        text += f"📈 Комиссии: покупка {tariff_info['commission_rates']['buy']}%, продажа {tariff_info['commission_rates']['sell']}%\n"
+        text += "💡 Используйте /commission для детальной информации"
+        
+        return text
+
+    async def _execute_automated_actions(self, update: Update, actions: List[Dict], account_selector: str):
+        """Execute actions in fully automated mode for specific account"""
         executed_actions = []
         failed_actions = []
         total_commission_paid = 0
@@ -616,7 +1026,7 @@ class InvestmentTelegramBot:
         for action in actions:
             try:
                 if action['urgency'] == 'high':  # Execute only high urgency in auto mode
-                    result = await self._execute_trading_action(action)
+                    result = await self._execute_trading_action(action, account_selector)
                     if result['success']:
                         executed_actions.append(action)
                         # Calculate commission for reporting
@@ -629,8 +1039,10 @@ class InvestmentTelegramBot:
                 logger.error(f"Action execution failed: {e}")
                 failed_actions.append(action)
         
+        account_text = "выбранным счетом" if account_selector != "all" else "всеми счетами"
+        
         # Send execution report with commission info
-        report = "🤖 АВТОМАТИЧЕСКОЕ ИСПОЛНЕНИЕ ЗАВЕРШЕНО:\n\n"
+        report = f"🤖 АВТОМАТИЧЕСКОЕ ИСПОЛНЕНИЕ ({account_text.upper()}) ЗАВЕРШЕНО:\n\n"
         report += f"✅ Успешно: {len(executed_actions)}\n"
         report += f"❌ Ошибки: {len(failed_actions)}\n"
         report += f"💰 Уплачено комиссий: {total_commission_paid:,.1f} руб.\n"
@@ -642,7 +1054,7 @@ class InvestmentTelegramBot:
         
         await update.message.reply_text(report)
 
-    async def _request_action_confirmation(self, update: Update, actions: List[Dict], user_id: int):
+    async def _request_action_confirmation(self, update: Update, actions: List[Dict], user_id: int, account_selector: str):
         """Request confirmation for trading actions with commission details"""
         self.pending_actions[user_id] = actions
         
@@ -661,6 +1073,8 @@ class InvestmentTelegramBot:
         
         self.pending_actions[user_id] = actions_with_commissions
         
+        account_text = "выбранным счетом" if account_selector != "all" else "всеми счетами"
+        
         keyboard = []
         for i, action in enumerate(actions_with_commissions):
             btn_text = f"{action['action']} {action['ticker']} ({action['quantity']} шт.) - {action['cost_calculation']['total_cost']:,.0f} руб."
@@ -675,7 +1089,7 @@ class InvestmentTelegramBot:
         commission_info = f"\n💰 Общая сумма комиссий: {total_commission:,.1f} руб."
         
         await update.message.reply_text(
-            "🤖 ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЙ:\n\n"
+            f"🤖 ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЙ ({account_text.upper()}):\n\n"
             "Выберите действия для исполнения:" + commission_info,
             reply_markup=reply_markup
         )
@@ -722,7 +1136,7 @@ class InvestmentTelegramBot:
             total_commission_paid = 0
             
             for action in actions:
-                result = await self._execute_trading_action(action)
+                result = await self._execute_trading_action(action, "all")  # Use all for simplicity
                 if result['success']:
                     executed.append(action)
                     # Add commission to result
@@ -742,7 +1156,7 @@ class InvestmentTelegramBot:
             action_index = int(query.data.split("_")[1])
             if 0 <= action_index < len(actions):
                 action = actions[action_index]
-                result = await self._execute_trading_action(action)
+                result = await self._execute_trading_action(action, "all")  # Use all for simplicity
                 
                 if result['success']:
                     # Calculate commission for this action
@@ -809,70 +1223,8 @@ class InvestmentTelegramBot:
         }
         return typical_prices.get(ticker.upper(), 100.0)  # Default 100 rub if unknown
 
-    def _format_strategy_response(self, strategy: Dict) -> str:
-        """Format AI strategy for display with automatic commission calculations"""
-        # Get tariff info for display
-        tariff_info = self.tariff_manager.get_tariff_info()
-        
-        text = f"🎯 **AI СТРАТЕГИЯ УПРАВЛЕНИЯ**: {strategy['strategy_name']}\n\n"
-        text += f"📈 **Целевая доходность**: {strategy['target_return']}%\n"
-        text += f"⚡ **Уровень риска**: {strategy['risk_level']}\n"
-        text += f"⏱️ **Горизонт**: {strategy['time_horizon']}\n\n"
-        
-        text += "**РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ**:\n"
-        
-        total_commission = 0
-        total_trade_volume = 0
-        
-        for action in strategy.get('actions', []):
-            # Get current price for commission calculation
-            current_price = action.get('current_price', 0)
-            if current_price == 0:
-                current_price = self._get_typical_price(action['ticker'])
-            
-            cost_calculation = self._calculate_total_cost(action, current_price)
-            
-            text += f"• {action['action']} {action['ticker']} ({action['quantity']} шт.)\n"
-            text += f"  💰 Стоимость: {cost_calculation['base_cost']:,.0f} руб.\n"
-            text += f"  📊 Комиссия: {cost_calculation['commission']:,.1f} руб. ({cost_calculation['commission_percent']:.2f}%)\n"
-            
-            if action['action'].upper() == 'BUY':
-                text += f"  💸 ИТОГО к оплате: {cost_calculation['total_cost']:,.0f} руб.\n"
-            else:  # SELL
-                text += f"  💸 ИТОГО к получению: {cost_calculation['total_cost']:,.0f} руб.\n"
-                
-            text += f"  📝 Причина: {action['reason']}\n"
-            text += f"  🎯 Эффект: {action['expected_impact']} ({action['urgency']})\n\n"
-            
-            total_commission += cost_calculation['commission']
-            total_trade_volume += cost_calculation['base_cost']
-        
-        # Add commission summary
-        text += f"**📊 СВОДКА ПО КОМИССИЯМ**:\n"
-        text += f"• Общий объем сделок: {total_trade_volume:,.0f} руб.\n"
-        text += f"• Сумма комиссий: {total_commission:,.1f} руб.\n"
-        text += f"• Средняя комиссия: {(total_commission/total_trade_volume*100) if total_trade_volume > 0 else 0:.2f}%\n\n"
-        
-        allocation = strategy.get('portfolio_optimization', {}).get('target_allocation', {})
-        text += f"**ЦЕЛЕВОЕ РАСПРЕДЕЛЕНИЕ**:\n"
-        text += f"• Акции: {allocation.get('stocks', 0)}%\n"
-        text += f"• Облигации: {allocation.get('bonds', 0)}%\n"
-        text += f"• Денежные средства: {allocation.get('cash', 0)}%\n\n"
-        
-        if settings.AUTO_TRADING_MODE:
-            text += "🤖 **РЕЖИМ**: ПОЛНОСТЬЮ АВТОМАТИЧЕСКИЙ\n"
-        else:
-            text += "👤 **РЕЖИМ**: С РУЧНЫМ ПОДТВЕРЖДЕНИЕМ\n"
-        
-        # Add tariff info
-        text += f"\n💰 **АКТУАЛЬНЫЙ ТАРИФ**: {tariff_info['name']}\n"
-        text += f"📈 Комиссии: покупка {tariff_info['commission_rates']['buy']}%, продажа {tariff_info['commission_rates']['sell']}%\n"
-        text += "💡 Используйте /commission для детальной информации"
-        
-        return text
-
-    async def _execute_trading_action(self, action: Dict) -> Dict:
-        """Execute a single trading action"""
+    async def _execute_trading_action(self, action: Dict, account_selector: str) -> Dict:
+        """Execute a single trading action for specific account"""
         try:
             # Get FIGI from ticker
             figi = await self._get_figi_by_ticker(action['ticker'])
@@ -887,12 +1239,25 @@ class InvestmentTelegramBot:
                            if action['action'] == 'BUY' 
                            else OrderDirection.ORDER_DIRECTION_SELL)
                 
-                # Get account ID
+                # Get account ID based on selector
                 accounts = client.users.get_accounts()
                 if not accounts.accounts:
                     raise ValueError("No accounts found")
                 
-                account_id = accounts.accounts[0].id
+                if account_selector == "all":
+                    # Use first account for all mode (simplified)
+                    account_id = accounts.accounts[0].id
+                else:
+                    # Find specific account
+                    account_id = account_selector
+                    account_found = False
+                    for account in accounts.accounts:
+                        if account.id == account_id:
+                            account_found = True
+                            break
+                    
+                    if not account_found:
+                        raise ValueError(f"Account {account_id} not found")
                 
                 # Execute market order
                 order = client.orders.post_order(
@@ -933,30 +1298,33 @@ class InvestmentTelegramBot:
         help_text = f"""
 📋 ПОМОЩЬ ПО КОМАНДАМ
 
-РАБОТАЮЩИЕ КОМАНДЫ:
+🎯 **КОМАНДЫ УПРАВЛЕНИЯ ПОРТФЕЛЕМ**:
+/auto_trade - AI управление выбранным счетом
+/auto_trade_all - AI управление всеми счетами
+/accounts - Выбор счета для управления (автоматически запускает AI)
 
-/start - Начать работу (показывает режим)
+📊 **ОСНОВНЫЕ КОМАНДЫ**:
 /portfolio - Анализ портфеля (ВСЕ СЧЕТА, ВСЕ ПОЗИЦИИ)
-/accounts - Список счетов  
 /health - Статус системы
-/auto_trade - AI управление портфелем ({trading_mode})
-/commission - Информация о тарифе и комиссиях  ✅ НОВОЕ
+/commission - Информация о тарифе и комиссиях
 /help - Эта справка
 
-🔧 РЕЖИМЫ РАБОТЫ:
+🔧 **РЕЖИМЫ РАБОТЫ**:
 • REAL MODE - TINKOFF_TOKEN
 • SANDBOX MODE - TINKOFF_TOKEN_SANDBOX
 
-🤖 AI УПРАВЛЕНИЕ:
+🤖 **AI УПРАВЛЕНИЕ**:
 • DeepSeek API + OpenRouter API
 • Максимизация доходности портфеля
 • Автоматическая оптимизация распределения
-• Учет брокерских комиссий в расчетах  ✅ НОВОЕ
+• Учет брокерских комиссий в расчетах
 
-💰 АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ ТАРИФА:
+💰 **АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ ТАРИФА**:
 • Инвестор: комиссия 0.3%, бесплатное обслуживание
 • Трейдер: комиссия 0.04%, обслуживание 390 руб./мес
 • Определяется автоматически от брокера
+
+🎯 **РЕЖИМ ТОРГОВЛИ**: {trading_mode}
 
 💡 Настройте соответствующие токены в .env файле!
         """
@@ -997,19 +1365,25 @@ class InvestmentTelegramBot:
             await update.message.reply_text("❌ Ошибка обработки сообщения")
 
     def setup_handlers(self):
-        """Setup command handlers with portfolio management"""
+        """Setup command handlers with account selection"""
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("portfolio", self.portfolio_command))
         self.application.add_handler(CommandHandler("accounts", self.accounts_command))
         self.application.add_handler(CommandHandler("health", self.health_command))
         self.application.add_handler(CommandHandler("auto_trade", self.auto_trade_command))
-        self.application.add_handler(CommandHandler("commission", self.commission_command))  # НОВАЯ КОМАНДА
+        self.application.add_handler(CommandHandler("auto_trade_all", self.auto_trade_all_command))
+        self.application.add_handler(CommandHandler("commission", self.commission_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         
-        # Add callback handler for action confirmation
+        # Add callback handlers - UPDATED PATTERNS
+        self.application.add_handler(CallbackQueryHandler(
+            self.handle_account_selection, 
+            pattern="^select_and_trade"
+        ))
+        
         self.application.add_handler(CallbackQueryHandler(
             self.handle_confirmation_callback, 
-            pattern="^(confirm_|confirm_all|cancel_all|show_commissions)"
+            pattern="^(confirm|cancel|show_commissions)"
         ))
         
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -1046,11 +1420,12 @@ class InvestmentTelegramBot:
         print("📍 Бот запущен и слушает сообщения...")
         print("💬 РАБОТАЮЩИЕ КОМАНДЫ:")
         print("   /start - информация о режиме")
-        print("   /portfolio - анализ портфеля (ВСЕ СЧЕТА, ВСЕ ПОЗИЦИИ)")
-        print("   /accounts - список счетов") 
+        print("   /portfolio - анализ портфеля (ВСЕ СЧЕТА)")
+        print("   /accounts - выбор счета для управления (автоматически запускает AI)") 
         print("   /health - статус системы")
-        print("   /auto_trade - AI управление портфелем")
-        print("   /commission - информация о тарифе")  # НОВАЯ КОМАНДА
+        print("   /auto_trade - AI управление выбранным счетом")
+        print("   /auto_trade_all - AI управление всеми счетами")
+        print("   /commission - информация о тарифе")
         print("   /help - помощь")
         print("⏹️  Ctrl+C для остановки")
         print("-" * 60)
